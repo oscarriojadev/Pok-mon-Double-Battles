@@ -247,14 +247,29 @@ def main():
                         hide_index=True
                     )
                     
-                    # Visual comparison
+                    # Visual comparison - using go.Figure instead of px.radar
                     st.subheader("Statistical Comparison")
                     comparison_df = pd.concat([team_pokemon.head(1), alternatives.head(5)])
-                    fig = px.radar(
-                        comparison_df,
-                        r=['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed'],
-                        theta=['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed'],
-                        color='Pokemon',
+                    
+                    fig = go.Figure()
+                    for pokemon in comparison_df['Pokemon'].unique():
+                        pokemon_stats = comparison_df[comparison_df['Pokemon'] == pokemon].iloc[0]
+                        fig.add_trace(go.Scatterpolar(
+                            r=[
+                                pokemon_stats['HP'],
+                                pokemon_stats['Attack'],
+                                pokemon_stats['Defense'],
+                                pokemon_stats['Sp. Atk'],
+                                pokemon_stats['Sp. Def'],
+                                pokemon_stats['Speed']
+                            ],
+                            theta=['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed'],
+                            fill='toself',
+                            name=pokemon
+                        ))
+                    
+                    fig.update_layout(
+                        polar=dict(radialaxis=dict(visible=True)),
                         title=f"Stats Comparison: {target_pokemon} vs Alternatives"
                     )
                     st.plotly_chart(fig, use_container_width=True)
