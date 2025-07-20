@@ -5,6 +5,121 @@ import plotly.express as px
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics.pairwise import cosine_similarity
 import plotly.graph_objects as go
+from collections import defaultdict
+
+# Complete type effectiveness chart
+TYPE_CHART = {
+    'Normal': {
+        'weak': ['Fighting'],
+        'resist': [],
+        'immune': ['Ghost'],
+        'strong_against': []
+    },
+    'Fire': {
+        'weak': ['Water', 'Ground', 'Rock'],
+        'resist': ['Fire', 'Grass', 'Ice', 'Bug', 'Steel', 'Fairy'],
+        'immune': [],
+        'strong_against': ['Grass', 'Ice', 'Bug', 'Steel']
+    },
+    'Water': {
+        'weak': ['Electric', 'Grass'],
+        'resist': ['Fire', 'Water', 'Ice', 'Steel'],
+        'immune': [],
+        'strong_against': ['Fire', 'Ground', 'Rock']
+    },
+    'Electric': {
+        'weak': ['Ground'],
+        'resist': ['Electric', 'Flying', 'Steel'],
+        'immune': [],
+        'strong_against': ['Water', 'Flying']
+    },
+    'Grass': {
+        'weak': ['Fire', 'Ice', 'Poison', 'Flying', 'Bug'],
+        'resist': ['Water', 'Electric', 'Grass', 'Ground'],
+        'immune': [],
+        'strong_against': ['Water', 'Ground', 'Rock']
+    },
+    'Ice': {
+        'weak': ['Fire', 'Fighting', 'Rock', 'Steel'],
+        'resist': ['Ice'],
+        'immune': [],
+        'strong_against': ['Grass', 'Ground', 'Flying', 'Dragon']
+    },
+    'Fighting': {
+        'weak': ['Flying', 'Psychic', 'Fairy'],
+        'resist': ['Bug', 'Rock', 'Dark'],
+        'immune': [],
+        'strong_against': ['Normal', 'Ice', 'Rock', 'Dark', 'Steel']
+    },
+    'Poison': {
+        'weak': ['Ground', 'Psychic'],
+        'resist': ['Grass', 'Fighting', 'Poison', 'Bug', 'Fairy'],
+        'immune': [],
+        'strong_against': ['Grass', 'Fairy']
+    },
+    'Ground': {
+        'weak': ['Water', 'Grass', 'Ice'],
+        'resist': ['Poison', 'Rock'],
+        'immune': ['Electric'],
+        'strong_against': ['Fire', 'Electric', 'Poison', 'Rock', 'Steel']
+    },
+    'Flying': {
+        'weak': ['Electric', 'Ice', 'Rock'],
+        'resist': ['Grass', 'Fighting', 'Bug'],
+        'immune': ['Ground'],
+        'strong_against': ['Grass', 'Fighting', 'Bug']
+    },
+    'Psychic': {
+        'weak': ['Bug', 'Ghost', 'Dark'],
+        'resist': ['Fighting', 'Psychic'],
+        'immune': [],
+        'strong_against': ['Fighting', 'Poison']
+    },
+    'Bug': {
+        'weak': ['Fire', 'Flying', 'Rock'],
+        'resist': ['Grass', 'Fighting', 'Ground'],
+        'immune': [],
+        'strong_against': ['Grass', 'Psychic', 'Dark']
+    },
+    'Rock': {
+        'weak': ['Water', 'Grass', 'Fighting', 'Ground', 'Steel'],
+        'resist': ['Normal', 'Fire', 'Poison', 'Flying'],
+        'immune': [],
+        'strong_against': ['Fire', 'Ice', 'Flying', 'Bug']
+    },
+    'Ghost': {
+        'weak': ['Ghost', 'Dark'],
+        'resist': ['Poison', 'Bug'],
+        'immune': ['Normal', 'Fighting'],
+        'strong_against': ['Psychic', 'Ghost']
+    },
+    'Dragon': {
+        'weak': ['Ice', 'Dragon', 'Fairy'],
+        'resist': ['Fire', 'Water', 'Electric', 'Grass'],
+        'immune': [],
+        'strong_against': ['Dragon']
+    },
+    'Dark': {
+        'weak': ['Fighting', 'Bug', 'Fairy'],
+        'resist': ['Ghost', 'Dark'],
+        'immune': ['Psychic'],
+        'strong_against': ['Psychic', 'Ghost']
+    },
+    'Steel': {
+        'weak': ['Fire', 'Fighting', 'Ground'],
+        'resist': ['Normal', 'Grass', 'Ice', 'Flying', 'Psychic', 'Bug', 'Rock', 'Dragon', 'Steel', 'Fairy'],
+        'immune': ['Poison'],
+        'strong_against': ['Ice', 'Rock', 'Fairy']
+    },
+    'Fairy': {
+        'weak': ['Poison', 'Steel'],
+        'resist': ['Fighting', 'Bug', 'Dark'],
+        'immune': ['Dragon'],
+        'strong_against': ['Fighting', 'Dragon', 'Dark']
+    }
+}
+
+ALL_TYPES = sorted(TYPE_CHART.keys())
 
 # Load data with caching
 @st.cache_data
@@ -88,6 +203,79 @@ def create_radar_chart(df, team_name):
     
     return fig
 
+def calculate_team_coverage(team_types):
+    """Calculate all coverage aspects for the team"""
+    resistances = set()
+    immunities = set()
+    offensive_coverage = defaultdict(int)
+    
+    # Collect all defensive properties
+    for t in team_types:
+        resistances.update(TYPE_CHART[t]['resist'])
+        immunities.update(TYPE_CHART[t]['immune'])
+        
+        # Count offensive coverage
+        for target in TYPE_CHART[t]['strong_against']:
+            offensive_coverage[target] += 1
+    
+    # Find uncovered weaknesses
+    all_attack_types = set()
+    for t in ALL_TYPES:
+        all_attack_types.update(TYPE_CHART[t]['weak'])
+    
+    uncovered_weaknesses = []
+    for attack_type in sorted(all_attack_types):
+        if attack_type not in resistances and attack_type not in immunities:
+            uncovered_weaknesses.append(attack_type)
+    
+    # Get resisted types (not including immunities)
+    resisted_types = [t for t in sorted(resistances) if t not in immunities]
+    
+    # Get super effective coverage (types hit by at least 2 team members)
+    good_coverage = [t for t, count in offensive_coverage.items() if count >= 2]
+    excellent_coverage = [t for t, count in offensive_coverage.items() if count >= 3]
+    
+    return {
+        'uncovered_weaknesses': uncovered_weaknesses,
+        'resisted_types': resisted_types,
+        'immune_types': sorted(immunities),
+        'offensive_coverage': dict(offensive_coverage),
+        'good_coverage': sorted(good_coverage),
+        'excellent_coverage': sorted(excellent_coverage)
+    }
+
+def display_type_info(attack_type):
+    """Display detailed information about a specific type"""
+    st.write(f"### {attack_type} Attacks")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write("**Super Effective Against:**")
+        super_effective = [t for t in ALL_TYPES 
+                         if attack_type in TYPE_CHART[t]['weak']]
+        for t in super_effective:
+            st.write(f"- {t}")
+    
+    with col2:
+        st.write("**Resisted By:**")
+        resisted_by = [t for t in ALL_TYPES 
+                     if attack_type in TYPE_CHART[t]['resist']]
+        if not resisted_by:
+            st.write("(No types resist this)")
+        else:
+            for t in resisted_by:
+                st.write(f"- {t}")
+    
+    st.write("**Ineffective Against:**")
+    immune = [t for t in ALL_TYPES 
+             if attack_type in TYPE_CHART[t]['immune']]
+    if not immune:
+        st.write("(No types are immune to this)")
+    else:
+        for t in immune:
+            st.write(f"- {t}")
+
 # Main app
 def main():
     st.set_page_config(layout="wide", page_title="Pokémon Team Analyzer")
@@ -113,12 +301,19 @@ def main():
         st.error(f"CSV must contain these columns: {', '.join(required_cols)}")
         st.stop()
     
+    # Add Type1 and Type2 columns if not present (for type coverage tab)
+    if 'Type1' not in df.columns:
+        df['Type1'] = 'Unknown'
+    if 'Type2' not in df.columns:
+        df['Type2'] = ''
+    
     # Main tabs
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "🏆 Team Overview", 
         "🔍 Pokémon Analysis", 
         "📊 Team Comparison", 
-        "🤖 ML Recommendations"
+        "🤖 ML Recommendations",
+        "🛡️ Type Coverage"
     ])
     
     with tab1:
@@ -279,6 +474,85 @@ def main():
                 st.warning("Could not calculate similarity for this Pokémon")
         else:
             st.warning(f"No Pokémon in {selected_team} with {selected_role} role")
+
+    with tab5:
+        st.header("Team Type Coverage Analysis")
+        st.write("Analyze your team's type weaknesses and resistances")
+        
+        selected_team = st.selectbox("Select Team", sorted(df['Team'].unique()), key='type_team')
+        
+        team_df = df[df['Team'] == selected_team]
+        if not team_df.empty:
+            # Get all types present on the team
+            team_types = []
+            for _, row in team_df.iterrows():
+                team_types.append(row['Type1'])
+                if pd.notna(row['Type2']) and row['Type2'] != '':
+                    team_types.append(row['Type2'])
+            
+            coverage = calculate_team_coverage(team_types)
+            
+            # Display defensive coverage
+            st.header("Defensive Coverage")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.subheader("❌ Uncovered Weaknesses")
+                if coverage['uncovered_weaknesses']:
+                    for t in coverage['uncovered_weaknesses']:
+                        st.error(t)
+                else:
+                    st.success("All attack types are covered!")
+            
+            with col2:
+                st.subheader("🛡️ Resisted Types")
+                if coverage['resisted_types']:
+                    for t in coverage['resisted_types']:
+                        st.info(t)
+                else:
+                    st.warning("No resisted types")
+            
+            with col3:
+                st.subheader("✅ Immune Types")
+                if coverage['immune_types']:
+                    for t in coverage['immune_types']:
+                        st.success(t)
+                else:
+                    st.warning("No immunities")
+            
+            # Display offensive coverage
+            st.header("Offensive Coverage")
+            
+            st.subheader("⚔️ Super Effective Against:")
+            if coverage['offensive_coverage']:
+                cols = st.columns(3)
+                for i, (t, count) in enumerate(sorted(coverage['offensive_coverage'].items())):
+                    with cols[i%3]:
+                        st.write(f"{t}: {'⭐' * count}")
+            else:
+                st.warning("No notable offensive coverage")
+            
+            st.subheader("✨ Good Coverage (2+ members):")
+            if coverage['good_coverage']:
+                st.write(", ".join(coverage['good_coverage']))
+            else:
+                st.warning("No types with good coverage")
+            
+            st.subheader("💫 Excellent Coverage (3+ members):")
+            if coverage['excellent_coverage']:
+                st.write(", ".join(coverage['excellent_coverage']))
+            else:
+                st.warning("No types with excellent coverage")
+            
+            # Show details for uncovered weaknesses
+            if coverage['uncovered_weaknesses']:
+                st.header("Details of Uncovered Weaknesses")
+                for attack_type in coverage['uncovered_weaknesses']:
+                    display_type_info(attack_type)
+                    st.write("---")
+        else:
+            st.warning("No data available for selected team")
 
 if __name__ == "__main__":
     main()
