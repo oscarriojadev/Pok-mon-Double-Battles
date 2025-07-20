@@ -13,18 +13,33 @@ def load_data(uploaded_file):
         return pd.read_csv(uploaded_file)
     return None
 
-# Machine learning similarity functions
+# Fixed machine learning similarity function
 def calculate_pokemon_similarity(df, selected_pokemon):
     stats = ['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']
-    numeric_df = df[stats].fillna(0)
+    
+    # Create a temporary DataFrame with reset index
+    temp_df = df.reset_index(drop=True)
+    
+    # Check if Pokémon exists in DataFrame
+    if selected_pokemon not in temp_df['Pokemon'].values:
+        return pd.DataFrame(columns=df.columns.tolist() + ['Similarity'])
+    
+    # Get numeric stats and scale
+    numeric_df = temp_df[stats].fillna(0)
     scaler = StandardScaler()
     scaled_stats = scaler.fit_transform(numeric_df)
     
-    pokemon_index = df[df['Pokemon'] == selected_pokemon].index[0]
-    similarities = cosine_similarity([scaled_stats[pokemon_index]], scaled_stats)[0]
+    # Find index in the reset DataFrame
+    try:
+        pokemon_index = temp_df.index[temp_df['Pokemon'] == selected_pokemon][0]
+        similarities = cosine_similarity([scaled_stats[pokemon_index]], scaled_stats)[0]
+    except IndexError:
+        return pd.DataFrame(columns=df.columns.tolist() + ['Similarity'])
     
-    df['Similarity'] = similarities
-    return df.sort_values('Similarity', ascending=False)
+    # Return results with original DataFrame structure
+    result_df = df.copy()
+    result_df['Similarity'] = similarities
+    return result_df.sort_values('Similarity', ascending=False)
 
 def calculate_team_similarity(df, selected_team):
     team_stats = df.groupby('Team').agg({
@@ -40,8 +55,11 @@ def calculate_team_similarity(df, selected_team):
     scaler = StandardScaler()
     scaled_stats = scaler.fit_transform(numeric_df)
     
-    team_index = team_stats[team_stats['Team'] == selected_team].index[0]
-    similarities = cosine_similarity([scaled_stats[team_index]], scaled_stats)[0]
+    try:
+        team_index = team_stats[team_stats['Team'] == selected_team].index[0]
+        similarities = cosine_similarity([scaled_stats[team_index]], scaled_stats)[0]
+    except IndexError:
+        return pd.DataFrame(columns=team_stats.columns.tolist() + ['Similarity'])
     
     team_stats['Similarity'] = similarities
     return team_stats.sort_values('Similarity', ascending=False)
@@ -49,10 +67,12 @@ def calculate_team_similarity(df, selected_team):
 # Radar chart function
 def create_radar_chart(df, team_name):
     team_df = df[df['Team'] == team_name]
+    if team_df.empty:
+        return go.Figure()
+    
     avg_stats = team_df[['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']].mean()
     
     fig = go.Figure()
-    
     fig.add_trace(go.Scatterpolar(
         r=avg_stats.values,
         theta=avg_stats.index,
@@ -61,11 +81,7 @@ def create_radar_chart(df, team_name):
     ))
     
     fig.update_layout(
-        polar=dict(
-            radialaxis=dict(
-                visible=True,
-                range=[0, max(avg_stats)*1.2]
-            )),
+        polar=dict(radialaxis=dict(visible=True, range=[0, max(avg_stats)*1.2])),
         showlegend=True,
         title=f'Team {team_name} Average Stats Radar Chart'
     )
@@ -115,13 +131,16 @@ def main():
         # Team composition
         st.subheader("Team Composition")
         team_df = df[df['Team'] == selected_team]
-        role_dist = team_df['PrimaryRole'].value_counts().reset_index()
-        fig = px.pie(role_dist, names='PrimaryRole', values='count', title='Role Distribution')
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Team members table
-        st.dataframe(team_df[['Pokemon', 'PrimaryRole', 'Item', 'Ability']], hide_index=True)
-    
+        if not team_df.empty:
+            role_dist = team_df['PrimaryRole'].value_counts().reset_index()
+            fig = px.pie(role_dist, names='PrimaryRole', values='count', title='Role Distribution')
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Team members table
+            st.dataframe(team_df[['Pokemon', 'PrimaryRole', 'Item', 'Ability']], hide_index=True)
+        else:
+            st.warning("No data available for selected team")
+
     with tab2:
         st.header("Pokémon Analysis")
         col1, col2 = st.columns(2)
@@ -133,59 +152,68 @@ def main():
             comparison_type = st.radio("Comparison Type", ["Same Role", "All Pokémon"])
         
         # Pokémon details
-        pokemon_data = df[df['Pokemon'] == selected_pokemon].iloc[0]
-        st.subheader(f"🧬 {selected_pokemon} Details")
-        
-        # Stats comparison
-        st.subheader("📈 Stats Comparison")
-        similar_pokemon = calculate_pokemon_similarity(
-            df[df['PrimaryRole'] == pokemon_data['PrimaryRole']] if comparison_type == "Same Role" else df,
-            selected_pokemon
-        ).head(10)
-        
-        fig = px.bar(
-            similar_pokemon,
-            x='Pokemon',
-            y=['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed'],
-            barmode='group',
-            title=f"Stats Comparison (Top 10 Similar Pokémon)"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
+        pokemon_data = df[df['Pokemon'] == selected_pokemon]
+        if not pokemon_data.empty:
+            pokemon_data = pokemon_data.iloc[0]
+            st.subheader(f"🧬 {selected_pokemon} Details")
+            
+            # Stats comparison
+            st.subheader("📈 Stats Comparison")
+            comparison_df = df[df['PrimaryRole'] == pokemon_data['PrimaryRole']] if comparison_type == "Same Role" else df
+            similar_pokemon = calculate_pokemon_similarity(comparison_df, selected_pokemon)
+            
+            if not similar_pokemon.empty:
+                similar_pokemon = similar_pokemon.head(10)
+                fig = px.bar(
+                    similar_pokemon,
+                    x='Pokemon',
+                    y=['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed'],
+                    barmode='group',
+                    title=f"Stats Comparison (Top 10 Similar Pokémon)"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("No similar Pokémon found")
+        else:
+            st.warning("Pokémon data not available")
+
     with tab3:
         st.header("Team Comparison")
         selected_team = st.selectbox("Select Team to Compare", sorted(df['Team'].unique()), key='team_compare')
         
         # Team similarity
-        similar_teams = calculate_team_similarity(df, selected_team).head(10)
-        st.subheader("Most Similar Teams (ML-based)")
-        st.dataframe(similar_teams, hide_index=True)
-        
-        # Radar chart comparison
-        st.subheader("Team Stats Comparison")
-        teams_to_compare = st.multiselect(
-            "Select teams to compare",
-            options=df['Team'].unique(),
-            default=[selected_team, similar_teams.iloc[1]['Team']]
-        )
-        
-        if len(teams_to_compare) >= 1:
-            fig = go.Figure()
-            for team in teams_to_compare:
-                team_stats = df[df['Team'] == team][['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']].mean()
-                fig.add_trace(go.Scatterpolar(
-                    r=team_stats.values,
-                    theta=team_stats.index,
-                    fill='toself',
-                    name=team
-                ))
+        similar_teams = calculate_team_similarity(df, selected_team)
+        if not similar_teams.empty:
+            st.subheader("Most Similar Teams (ML-based)")
+            st.dataframe(similar_teams.head(10), hide_index=True)
             
-            fig.update_layout(
-                polar=dict(radialaxis=dict(visible=True)),
-                title="Team Stats Radar Comparison"
+            # Radar chart comparison
+            st.subheader("Team Stats Comparison")
+            teams_to_compare = st.multiselect(
+                "Select teams to compare",
+                options=df['Team'].unique(),
+                default=[selected_team, similar_teams.iloc[1]['Team']] if len(similar_teams) > 1 else [selected_team]
             )
-            st.plotly_chart(fig, use_container_width=True)
-    
+            
+            if len(teams_to_compare) >= 1:
+                fig = go.Figure()
+                for team in teams_to_compare:
+                    team_stats = df[df['Team'] == team][['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']].mean()
+                    fig.add_trace(go.Scatterpolar(
+                        r=team_stats.values,
+                        theta=team_stats.index,
+                        fill='toself',
+                        name=team
+                    ))
+                
+                fig.update_layout(
+                    polar=dict(radialaxis=dict(visible=True)),
+                    title="Team Stats Radar Comparison"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("No similar teams found")
+
     with tab4:
         st.header("Machine Learning Recommendations")
         st.write("""
