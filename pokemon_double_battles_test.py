@@ -197,33 +197,45 @@ def main():
         selected_team = st.selectbox("Select Team", sorted(df['Team'].unique()), key='ml_team')
         selected_role = st.selectbox("Select Role to Replace", sorted(df['PrimaryRole'].unique()))
         
-        team_pokemon = df[(df['Team'] == selected_team) & (df['PrimaryRole'] == selected_role)]
+        # Filter by role first
+        role_df = df[df['PrimaryRole'] == selected_role]
+        
+        # Get team Pokémon with this role
+        team_pokemon = role_df[role_df['Team'] == selected_team]
         
         if not team_pokemon.empty:
             target_pokemon = team_pokemon.iloc[0]['Pokemon']
-            similar_options = calculate_pokemon_similarity(
-                df[df['PrimaryRole'] == selected_role],
-                target_pokemon
-            ).head(6)
+            similar_options = calculate_pokemon_similarity(role_df, target_pokemon)
             
-            st.subheader(f"Top 5 Alternatives for {target_pokemon} ({selected_role})")
-            st.dataframe(
-                similar_options[['Pokemon', 'Item', 'Ability', 'Similarity']].iloc[1:6],
-                hide_index=True
-            )
-            
-            # Visual comparison
-            st.subheader("Statistical Comparison")
-            fig = px.radar(
-                similar_options.head(6),
-                r=['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed'],
-                theta=['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed'],
-                color='Pokemon',
-                title="Stats Radar Comparison"
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            if not similar_options.empty:
+                st.subheader(f"Top 5 Alternatives for {target_pokemon} ({selected_role})")
+                
+                # Exclude the target Pokémon itself and show next 5
+                alternatives = similar_options[similar_options['Pokemon'] != target_pokemon].head(5)
+                
+                if not alternatives.empty:
+                    st.dataframe(
+                        alternatives[['Pokemon', 'Item', 'Ability', 'Similarity']],
+                        hide_index=True
+                    )
+                    
+                    # Visual comparison
+                    st.subheader("Statistical Comparison")
+                    comparison_df = pd.concat([team_pokemon.head(1), alternatives.head(5)])
+                    fig = px.radar(
+                        comparison_df,
+                        r=['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed'],
+                        theta=['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed'],
+                        color='Pokemon',
+                        title=f"Stats Comparison: {target_pokemon} vs Alternatives"
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.warning(f"No similar Pokémon found for {target_pokemon} in this role")
+            else:
+                st.warning("Could not calculate similarity for this Pokémon")
         else:
-            st.warning("No Pokémon in selected team with this role")
+            st.warning(f"No Pokémon in {selected_team} with {selected_role} role")
 
 if __name__ == "__main__":
     main()
