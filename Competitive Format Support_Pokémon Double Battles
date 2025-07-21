@@ -1,0 +1,835 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics.pairwise import cosine_similarity
+import plotly.graph_objects as go
+from collections import defaultdict
+
+# Complete type effectiveness chart
+TYPE_CHART = {
+    'Normal': {
+        'weak': ['Fighting'],
+        'resist': [],
+        'immune': ['Ghost'],
+        'strong_against': []
+    },
+    'Fire': {
+        'weak': ['Water', 'Ground', 'Rock'],
+        'resist': ['Fire', 'Grass', 'Ice', 'Bug', 'Steel', 'Fairy'],
+        'immune': [],
+        'strong_against': ['Grass', 'Ice', 'Bug', 'Steel']
+    },
+    'Water': {
+        'weak': ['Electric', 'Grass'],
+        'resist': ['Fire', 'Water', 'Ice', 'Steel'],
+        'immune': [],
+        'strong_against': ['Fire', 'Ground', 'Rock']
+    },
+    'Electric': {
+        'weak': ['Ground'],
+        'resist': ['Electric', 'Flying', 'Steel'],
+        'immune': [],
+        'strong_against': ['Water', 'Flying']
+    },
+    'Grass': {
+        'weak': ['Fire', 'Ice', 'Poison', 'Flying', 'Bug'],
+        'resist': ['Water', 'Electric', 'Grass', 'Ground'],
+        'immune': [],
+        'strong_against': ['Water', 'Ground', 'Rock']
+    },
+    'Ice': {
+        'weak': ['Fire', 'Fighting', 'Rock', 'Steel'],
+        'resist': ['Ice'],
+        'immune': [],
+        'strong_against': ['Grass', 'Ground', 'Flying', 'Dragon']
+    },
+    'Fighting': {
+        'weak': ['Flying', 'Psychic', 'Fairy'],
+        'resist': ['Bug', 'Rock', 'Dark'],
+        'immune': [],
+        'strong_against': ['Normal', 'Ice', 'Rock', 'Dark', 'Steel']
+    },
+    'Poison': {
+        'weak': ['Ground', 'Psychic'],
+        'resist': ['Grass', 'Fighting', 'Poison', 'Bug', 'Fairy'],
+        'immune': [],
+        'strong_against': ['Grass', 'Fairy']
+    },
+    'Ground': {
+        'weak': ['Water', 'Grass', 'Ice'],
+        'resist': ['Poison', 'Rock'],
+        'immune': ['Electric'],
+        'strong_against': ['Fire', 'Electric', 'Poison', 'Rock', 'Steel']
+    },
+    'Flying': {
+        'weak': ['Electric', 'Ice', 'Rock'],
+        'resist': ['Grass', 'Fighting', 'Bug'],
+        'immune': ['Ground'],
+        'strong_against': ['Grass', 'Fighting', 'Bug']
+    },
+    'Psychic': {
+        'weak': ['Bug', 'Ghost', 'Dark'],
+        'resist': ['Fighting', 'Psychic'],
+        'immune': [],
+        'strong_against': ['Fighting', 'Poison']
+    },
+    'Bug': {
+        'weak': ['Fire', 'Flying', 'Rock'],
+        'resist': ['Grass', 'Fighting', 'Ground'],
+        'immune': [],
+        'strong_against': ['Grass', 'Psychic', 'Dark']
+    },
+    'Rock': {
+        'weak': ['Water', 'Grass', 'Fighting', 'Ground', 'Steel'],
+        'resist': ['Normal', 'Fire', 'Poison', 'Flying'],
+        'immune': [],
+        'strong_against': ['Fire', 'Ice', 'Flying', 'Bug']
+    },
+    'Ghost': {
+        'weak': ['Ghost', 'Dark'],
+        'resist': ['Poison', 'Bug'],
+        'immune': ['Normal', 'Fighting'],
+        'strong_against': ['Psychic', 'Ghost']
+    },
+    'Dragon': {
+        'weak': ['Ice', 'Dragon', 'Fairy'],
+        'resist': ['Fire', 'Water', 'Electric', 'Grass'],
+        'immune': [],
+        'strong_against': ['Dragon']
+    },
+    'Dark': {
+        'weak': ['Fighting', 'Bug', 'Fairy'],
+        'resist': ['Ghost', 'Dark'],
+        'immune': ['Psychic'],
+        'strong_against': ['Psychic', 'Ghost']
+    },
+    'Steel': {
+        'weak': ['Fire', 'Fighting', 'Ground'],
+        'resist': ['Normal', 'Grass', 'Ice', 'Flying', 'Psychic', 'Bug', 'Rock', 'Dragon', 'Steel', 'Fairy'],
+        'immune': ['Poison'],
+        'strong_against': ['Ice', 'Rock', 'Fairy']
+    },
+    'Fairy': {
+        'weak': ['Poison', 'Steel'],
+        'resist': ['Fighting', 'Bug', 'Dark'],
+        'immune': ['Dragon'],
+        'strong_against': ['Fighting', 'Dragon', 'Dark']
+    }
+}
+
+ALL_TYPES = sorted(TYPE_CHART.keys())
+
+# Load data with caching
+@st.cache_data
+def load_data(uploaded_file):
+    if uploaded_file is not None:
+        return pd.read_csv(uploaded_file)
+    return None
+
+# Fixed machine learning similarity function
+def calculate_pokemon_similarity(df, selected_pokemon):
+    stats = ['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']
+    
+    # Create a temporary DataFrame with reset index
+    temp_df = df.reset_index(drop=True)
+    
+    # Check if Pokémon exists in DataFrame
+    if selected_pokemon not in temp_df['Pokemon'].values:
+        return pd.DataFrame(columns=df.columns.tolist() + ['Similarity'])
+    
+    # Get numeric stats and scale
+    numeric_df = temp_df[stats].fillna(0)
+    scaler = StandardScaler()
+    scaled_stats = scaler.fit_transform(numeric_df)
+    
+    # Find index in the reset DataFrame
+    try:
+        pokemon_index = temp_df.index[temp_df['Pokemon'] == selected_pokemon][0]
+        similarities = cosine_similarity([scaled_stats[pokemon_index]], scaled_stats)[0]
+    except IndexError:
+        return pd.DataFrame(columns=df.columns.tolist() + ['Similarity'])
+    
+    # Return results with original DataFrame structure
+    result_df = df.copy()
+    result_df['Similarity'] = similarities
+    return result_df.sort_values('Similarity', ascending=False)
+
+def calculate_team_similarity(df, selected_team):
+    team_stats = df.groupby('Team').agg({
+        'HP': 'mean',
+        'Attack': 'mean',
+        'Defense': 'mean',
+        'Sp. Atk': 'mean',
+        'Sp. Def': 'mean',
+        'Speed': 'mean'
+    }).reset_index()
+    
+    numeric_df = team_stats.select_dtypes(include=[np.number])
+    scaler = StandardScaler()
+    scaled_stats = scaler.fit_transform(numeric_df)
+    
+    try:
+        team_index = team_stats[team_stats['Team'] == selected_team].index[0]
+        similarities = cosine_similarity([scaled_stats[team_index]], scaled_stats)[0]
+    except IndexError:
+        return pd.DataFrame(columns=team_stats.columns.tolist() + ['Similarity'])
+    
+    team_stats['Similarity'] = similarities
+    return team_stats.sort_values('Similarity', ascending=False)
+
+# Radar chart function
+def create_radar_chart(df, team_name):
+    team_df = df[df['Team'] == team_name]
+    if team_df.empty:
+        return go.Figure()
+    
+    avg_stats = team_df[['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']].mean()
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(
+        r=avg_stats.values,
+        theta=avg_stats.index,
+        fill='toself',
+        name=team_name
+    ))
+    
+    fig.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, max(avg_stats)*1.2])),
+        showlegend=True,
+        title=f'Team {team_name} Average Stats Radar Chart'
+    )
+    
+    return fig
+
+def calculate_team_coverage(team_types):
+    """Calculate all coverage aspects for the team"""
+    resistances = set()
+    immunities = set()
+    offensive_coverage = defaultdict(int)
+    
+    # Collect all defensive properties
+    for t in team_types:
+        resistances.update(TYPE_CHART[t]['resist'])
+        immunities.update(TYPE_CHART[t]['immune'])
+        
+        # Count offensive coverage
+        for target in TYPE_CHART[t]['strong_against']:
+            offensive_coverage[target] += 1
+    
+    # Find uncovered weaknesses
+    all_attack_types = set()
+    for t in ALL_TYPES:
+        all_attack_types.update(TYPE_CHART[t]['weak'])
+    
+    uncovered_weaknesses = []
+    for attack_type in sorted(all_attack_types):
+        if attack_type not in resistances and attack_type not in immunities:
+            uncovered_weaknesses.append(attack_type)
+    
+    # Get resisted types (not including immunities)
+    resisted_types = [t for t in sorted(resistances) if t not in immunities]
+    
+    # Get super effective coverage (types hit by at least 2 team members)
+    good_coverage = [t for t, count in offensive_coverage.items() if count >= 2]
+    excellent_coverage = [t for t, count in offensive_coverage.items() if count >= 3]
+    
+    return {
+        'uncovered_weaknesses': uncovered_weaknesses,
+        'resisted_types': resisted_types,
+        'immune_types': sorted(immunities),
+        'offensive_coverage': dict(offensive_coverage),
+        'good_coverage': sorted(good_coverage),
+        'excellent_coverage': sorted(excellent_coverage)
+    }
+
+def display_type_info(attack_type):
+    """Display detailed information about a specific type"""
+    st.write(f"### {attack_type} Attacks")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write("**Super Effective Against:**")
+        super_effective = [t for t in ALL_TYPES 
+                         if attack_type in TYPE_CHART[t]['weak']]
+        for t in super_effective:
+            st.write(f"- {t}")
+    
+    with col2:
+        st.write("**Resisted By:**")
+        resisted_by = [t for t in ALL_TYPES 
+                     if attack_type in TYPE_CHART[t]['resist']]
+        if not resisted_by:
+            st.write("(No types resist this)")
+        else:
+            for t in resisted_by:
+                st.write(f"- {t}")
+    
+    st.write("**Ineffective Against:**")
+    immune = [t for t in ALL_TYPES 
+             if attack_type in TYPE_CHART[t]['immune']]
+    if not immune:
+        st.write("(No types are immune to this)")
+    else:
+        for t in immune:
+            st.write(f"- {t}")
+
+def check_vgc_compliance(team_df):
+    """Check if team complies with VGC rules"""
+    issues = []
+    
+    # Check for duplicate items
+    items = team_df['Item'].dropna().tolist()
+    if len(items) != len(set(items)):
+        issues.append("⚠️ Item Clause Violation: Duplicate items detected")
+    
+    # Check for restricted legendaries (example - adjust based on current rules)
+    restricted = ['Mewtwo', 'Lugia', 'Ho-Oh', 'Kyogre', 'Groudon', 'Rayquaza']
+    restricted_present = team_df[team_df['Pokemon'].isin(restricted)]
+    if not restricted_present.empty:
+        issues.append(f"⚠️ Restricted Legendaries: {', '.join(restricted_present['Pokemon'].tolist())}")
+    
+    # Check team size
+    if len(team_df) > 6:
+        issues.append("⚠️ Team Size: More than 6 Pokémon")
+    
+    return issues if issues else ["✅ Team complies with VGC rules"]
+
+def generate_team_sheet(team_df):
+    """Generate a printable team sheet"""
+    sheet = team_df[['Pokemon', 'Item', 'Ability', 'Move 1', 'Move 2', 'Move 3', 'Move 4']].copy()
+    sheet['EV Spread'] = team_df['EVs']
+    sheet['Nature'] = team_df['Nature']
+    return sheet
+
+def prepare_bo3_strategy(team_df, opponent_team_df=None):
+    """Prepare Best-of-3 strategy options"""
+    strategies = []
+    
+    # Default lead options
+    leads = team_df[team_df['Early Game'].str.contains('Lead', na=False)]
+    if not leads.empty:
+        strategies.append(f"**Primary Lead Option:** {', '.join(leads['Pokemon'].tolist())}")
+    
+    # Alternative leads based on opponent (if provided)
+    if opponent_team_df is not None:
+        opp_weaknesses = calculate_team_coverage(
+            opponent_team_df['Type1'].tolist() + 
+            opponent_team_df['Type2'].dropna().tolist()
+        )['uncovered_weaknesses']
+        
+        counter_leads = []
+        for _, pokemon in team_df.iterrows():
+            pokemon_types = [pokemon['Type1']]
+            if pd.notna(pokemon['Type2']):
+                pokemon_types.append(pokemon['Type2'])
+            
+            coverage = calculate_team_coverage(pokemon_types)
+            if any(t in coverage['offensive_coverage'] for t in opp_weaknesses):
+                counter_leads.append(pokemon['Pokemon'])
+        
+        if counter_leads:
+            strategies.append(f"**Counter Lead Options:** {', '.join(counter_leads)} (targets opponent weaknesses)")
+    
+    # Sideboard options (simplified - in VGC you bring 6 choose 4)
+    strategies.append("**Flexible Slots:** Consider these Pokémon for different matchups:")
+    roles = team_df['PrimaryRole'].value_counts()
+    for role, count in roles.items():
+        if count > 1:
+            pokemon = team_df[team_df['PrimaryRole'] == role]['Pokemon'].tolist()
+            strategies.append(f"- {role}: {', '.join(pokemon)}")
+    
+    return strategies
+
+def analyze_counter_team(team_df, opponent_team_df):
+    """Analyze how to counter an opponent's team"""
+    counter_strategies = []
+    
+    # Get opponent's weaknesses
+    opp_types = opponent_team_df['Type1'].tolist() + opponent_team_df['Type2'].dropna().tolist()
+    opp_coverage = calculate_team_coverage(opp_types)
+    
+    # Find which of our Pokémon can exploit opponent's weaknesses
+    exploiters = []
+    for _, pokemon in team_df.iterrows():
+        pokemon_types = [pokemon['Type1']]
+        if pd.notna(pokemon['Type2']):
+            pokemon_types.append(pokemon['Type2'])
+        
+        coverage = calculate_team_coverage(pokemon_types)
+        if any(t in coverage['offensive_coverage'] for t in opp_coverage['uncovered_weaknesses']):
+            exploiters.append(pokemon['Pokemon'])
+    
+    if exploiters:
+        counter_strategies.append(f"**Best Counters:** {', '.join(exploiters)} can exploit opponent's weaknesses")
+    
+    # Check for opponent's strengths against our team
+    our_types = team_df['Type1'].tolist() + team_df['Type2'].dropna().tolist()
+    our_coverage = calculate_team_coverage(our_types)
+    
+    threats = []
+    for t in opp_coverage['offensive_coverage']:
+        if t in our_coverage['uncovered_weaknesses']:
+            threats.append(t)
+    
+    if threats:
+        counter_strategies.append(f"⚠️ **Watch Out For:** Opponent's {', '.join(threats)} attacks")
+        # Suggest defensive options
+        defenders = []
+        for _, pokemon in team_df.iterrows():
+            pokemon_types = [pokemon['Type1']]
+            if pd.notna(pokemon['Type2']):
+                pokemon_types.append(pokemon['Type2'])
+            
+            resists = set()
+            for pt in pokemon_types:
+                resists.update(TYPE_CHART[pt]['resist'])
+            
+            if any(t in resists for t in threats):
+                defenders.append(pokemon['Pokemon'])
+        
+        if defenders:
+            counter_strategies.append(f"**Defensive Options:** {', '.join(defenders)} resist opponent's threats")
+    
+    return counter_strategies if counter_strategies else ["No specific counter strategies identified"]
+
+# Main app
+def main():
+    st.set_page_config(layout="wide", page_title="Pokémon Team Analyzer")
+    
+    st.title("⚔️ Pokémon Competitive Team Analyzer")
+    st.write("""
+    Advanced tool for VGC and competitive Pokémon team analysis, tournament preparation, and matchup strategy.
+    """)
+    
+    # File upload
+    uploaded_file = st.sidebar.file_uploader("Upload Pokémon Data CSV", type=["csv"])
+    
+    if uploaded_file is None:
+        st.info("Please upload a CSV file to begin analysis")
+        st.stop()
+    
+    df = load_data(uploaded_file)
+    
+    # Ensure required columns exist
+    required_cols = ['Pokemon', 'Team', 'HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed', 'Type1', 'Type2']
+    if not all(col in df.columns for col in required_cols):
+        st.error(f"CSV must contain these columns: {', '.join(required_cols)}")
+        st.stop()
+    
+    # Add default columns if not present
+    default_cols = {
+        'PrimaryRole': 'Unknown',
+        'SecondaryRole': '',
+        'Item': '',
+        'Ability': '',
+        'Nature': '',
+        'Move 1': '',
+        'Move 2': '',
+        'Move 3': '',
+        'Move 4': '',
+        'EVs': '',
+        'Early Game': '',
+        'Mid Game': '',
+        'Late Game': ''
+    }
+    
+    for col, default in default_cols.items():
+        if col not in df.columns:
+            df[col] = default
+    
+    # Main tabs focused on new features
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "🏆 VGC Format Tools", 
+        "🎯 Tournament Prep", 
+        "🔄 Team Synergy",
+        "⚔️ Matchup Analysis"
+    ])
+    
+    with tab1:
+        st.header("VGC Format Compliance Tools")
+        selected_team = st.selectbox("Select Team", sorted(df['Team'].unique()), key='vgc_team')
+        
+        team_df = df[df['Team'] == selected_team]
+        if not team_df.empty:
+            # VGC Compliance Check
+            st.subheader("VGC Rule Compliance")
+            compliance = check_vgc_compliance(team_df)
+            for item in compliance:
+                if item.startswith("⚠️"):
+                    st.error(item)
+                else:
+                    st.success(item)
+            
+            # Team Sheet Generator
+            st.subheader("Team Sheet Generator")
+            team_sheet = generate_team_sheet(team_df)
+            st.dataframe(team_sheet, hide_container_width=True)
+            
+            # Export button
+            st.download_button(
+                label="Download Team Sheet",
+                data=team_sheet.to_csv(index=False),
+                file_name=f"{selected_team.replace(' ', '_')}_team_sheet.csv",
+                mime="text/csv"
+            )
+            
+            # Legendary Usage Tracker
+            st.subheader("Legendary/Restricted Pokémon")
+            legendaries = team_df[team_df['Pokemon'].str.contains('|'.join([
+                'Mewtwo', 'Lugia', 'Ho-Oh', 'Kyogre', 'Groudon', 'Rayquaza',
+                'Dialga', 'Palkia', 'Giratina', 'Reshiram', 'Zekrom', 'Kyurem',
+                'Xerneas', 'Yveltal', 'Zygarde', 'Solgaleo', 'Lunala', 'Necrozma',
+                'Zacian', 'Zamazenta', 'Eternatus', 'Calyrex'
+            ]), case=False)]
+            
+            if not legendaries.empty:
+                st.warning(f"Restricted Pokémon detected: {', '.join(legendaries['Pokemon'].unique())}")
+                st.write("Current VGC rules typically restrict these Pokémon. Check official rules for details.")
+            else:
+                st.success("No restricted legendary Pokémon detected")
+            
+            # Item Clause Validator
+            st.subheader("Item Clause Check")
+            item_counts = team_df['Item'].value_counts()
+            violations = item_counts[item_counts > 1].index.tolist()
+            
+            if violations:
+                st.error("Item Clause Violation: These items appear on multiple Pokémon:")
+                for item in violations:
+                    users = team_df[team_df['Item'] == item]['Pokemon'].tolist()
+                    st.write(f"- {item}: {', '.join(users)}")
+            else:
+                st.success("Team complies with Item Clause (no duplicate items)")
+            
+        else:
+            st.warning("No data available for selected team")
+
+    with tab2:
+        st.header("Tournament Preparation Tools")
+        selected_team = st.selectbox("Select Your Team", sorted(df['Team'].unique()), key='tourney_team')
+        
+        team_df = df[df['Team'] == selected_team]
+        if not team_df.empty:
+            # Best-of-3 Strategy Planner
+            st.subheader("Best-of-3 Strategy Planner")
+            
+            # Opponent team selection
+            opponent_team = st.selectbox(
+                "Select Opponent Team (optional)", 
+                [""] + [t for t in sorted(df['Team'].unique()) if t != selected_team],
+                key='opponent_team'
+            )
+            
+            opponent_df = df[df['Team'] == opponent_team] if opponent_team else None
+            
+            strategies = prepare_bo3_strategy(team_df, opponent_df)
+            for strategy in strategies:
+                if "⚠️" in strategy:
+                    st.warning(strategy)
+                elif "**" in strategy:
+                    st.markdown(strategy)
+                else:
+                    st.write(strategy)
+            
+            # Sideboard Preparation
+            st.subheader("Sideboard Preparation")
+            st.write("In VGC, you bring 6 Pokémon and choose 4 for each match. Mark your flexible picks:")
+            
+            # Create interactive checklist for team selection
+            team_members = team_df['Pokemon'].tolist()
+            selected_for_battle = st.multiselect(
+                "Select 4 Pokémon for this matchup",
+                team_members,
+                default=team_members[:4],
+                key='battle_team'
+            )
+            
+            if len(selected_for_battle) != 4:
+                st.warning("Select exactly 4 Pokémon for battle")
+            else:
+                st.success(f"Battle Team: {', '.join(selected_for_battle)}")
+                
+                # Show roles of selected team
+                roles = []
+                for pokemon in selected_for_battle:
+                    pokemon_data = team_df[team_df['Pokemon'] == pokemon].iloc[0]
+                    role = pokemon_data['PrimaryRole']
+                    if pd.notna(pokemon_data['SecondaryRole']) and pokemon_data['SecondaryRole'] != '':
+                        role += f"/{pokemon_data['SecondaryRole']}"
+                    roles.append(f"{pokemon} ({role})")
+                
+                st.write("**Roles:**", ", ".join(roles))
+            
+            # Counter-Team Builder
+            if opponent_team:
+                st.subheader("Counter-Team Analysis")
+                counter_strategies = analyze_counter_team(team_df, opponent_df)
+                
+                if counter_strategies:
+                    for strategy in counter_strategies:
+                        if "⚠️" in strategy:
+                            st.warning(strategy)
+                        elif "**" in strategy:
+                            st.markdown(strategy)
+                        else:
+                            st.write(strategy)
+                
+                # Suggested leads against opponent
+                st.write("### Suggested Leads Against Opponent")
+                opp_weaknesses = calculate_team_coverage(
+                    opponent_df['Type1'].tolist() + 
+                    opponent_df['Type2'].dropna().tolist()
+                )['uncovered_weaknesses']
+                
+                if opp_weaknesses:
+                    st.write(f"Opponent is weak to: {', '.join(opp_weaknesses)}")
+                    
+                    # Find Pokémon that can exploit these weaknesses
+                    exploiters = []
+                    for _, pokemon in team_df.iterrows():
+                        pokemon_types = [pokemon['Type1']]
+                        if pd.notna(pokemon['Type2']):
+                            pokemon_types.append(pokemon['Type2'])
+                        
+                        coverage = calculate_team_coverage(pokemon_types)
+                        if any(t in coverage['offensive_coverage'] for t in opp_weaknesses):
+                            exploiters.append(pokemon['Pokemon'])
+                    
+                    if exploiters:
+                        st.success(f"Consider leading with: {', '.join(exploiters)}")
+                else:
+                    st.info("No clear weaknesses to exploit in opponent team")
+
+    with tab3:
+        st.header("Team Synergy Analysis")
+        selected_team = st.selectbox("Select Team", sorted(df['Team'].unique()), key='synergy_team')
+        
+        team_df = df[df['Team'] == selected_team]
+        if not team_df.empty:
+            # Team composition overview
+            st.subheader("🧩 Team Composition")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Role distribution pie chart
+                role_dist = team_df['PrimaryRole'].value_counts().reset_index()
+                fig = px.pie(role_dist, names='PrimaryRole', values='count', 
+                             title='Primary Role Distribution')
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                # Show all team members with roles
+                st.write("**Team Members:**")
+                for _, row in team_df.iterrows():
+                    role_info = f"{row['Pokemon']} ({row['PrimaryRole']}"
+                    if pd.notna(row['SecondaryRole']) and row['SecondaryRole'] != '':
+                        role_info += f" / {row['SecondaryRole']}"
+                    st.write(f"- {role_info}")
+            
+            st.divider()
+            
+            # Enhanced Role Analysis
+            st.subheader("🎯 Role-Specific Analysis")
+            
+            # Define expected moves/abilities for each role
+            ROLE_EXPECTATIONS = {
+                'Sweeper': ['Swords Dance', 'Nasty Plot', 'Dragon Dance', 'Bulk Up'],
+                'Wallbreaker': ['Choice Band', 'Choice Specs', 'Life Orb'],
+                'Support': ['Tailwind', 'Helping Hand', 'Light Screen', 'Reflect'],
+                'Tank': ['Recover', 'Protect', 'Iron Defense', 'Amnesia'],
+                'Disruptor': ['Taunt', 'Encore', 'Will-O-Wisp', 'Thunder Wave']
+            }
+            
+            for role in team_df['PrimaryRole'].unique():
+                role_pokemon = team_df[team_df['PrimaryRole'] == role]
+                st.write(f"#### {role} Role Analysis")
+                
+                for _, pokemon in role_pokemon.iterrows():
+                    # Check for expected moves/items
+                    missing_components = []
+                    moves = [pokemon[f'Move {i}'] for i in range(1,5)]
+                    
+                    if role in ROLE_EXPECTATIONS:
+                        for expected in ROLE_EXPECTATIONS[role]:
+                            if expected not in ' '.join(str(m) for m in moves) and expected not in str(pokemon['Item']):
+                                missing_components.append(expected)
+                    
+                    # Display Pokémon info
+                    if missing_components:
+                        st.warning(f"{pokemon['Pokemon']} is missing common {role} elements: {', '.join(missing_components)}")
+                    else:
+                        st.success(f"{pokemon['Pokemon']} has good {role} setup")
+                    
+                    # Show key moves
+                    st.write(f"**Key Moves:** {', '.join([m for m in moves if pd.notna(m)])}")
+                    st.write(f"**Item:** {pokemon['Item']}")
+                    st.write(f"**Ability:** {pokemon['Ability']}")
+                    st.write("---")
+            
+            st.divider()
+            
+            # Enhanced Win Condition Analysis
+            st.subheader("🏆 Win Condition Analysis")
+            
+            # Get unique win conditions (some teams might have multiple)
+            win_conditions = team_df['Win Condition'].dropna().unique()
+            
+            if len(win_conditions) > 0:
+                for wc in win_conditions:
+                    st.write(f"#### Win Condition: {wc}")
+                    
+                    # Find Pokémon that directly contribute
+                    contributors = []
+                    for _, pokemon in team_df.iterrows():
+                        moves = [pokemon[f'Move {i}'] for i in range(1,5)]
+                        if any(keyword in ' '.join(str(m) for m in moves) for keyword in wc.split()) or \
+                           any(keyword in str(pokemon['Ability']) for keyword in wc.split()):
+                            contributors.append(pokemon['Pokemon'])
+                    
+                    if contributors:
+                        st.success(f"Primary Contributors: {', '.join(contributors)}")
+                    else:
+                        st.warning("No clear contributors identified - check team strategy")
+                    
+                    # Show execution phases
+                    st.write("**Execution Phases:**")
+                    try:
+                        phases = {
+                            'Early Game': team_df['Early Game'].iloc[0],
+                            'Mid Game': team_df['Mid Game'].iloc[0],
+                            'Late Game': team_df['Late Game'].iloc[0]
+                        }
+                        for phase, desc in phases.items():
+                            if pd.notna(desc):
+                                st.write(f"- **{phase}:** {desc}")
+                    except:
+                        st.warning("Phase information not available")
+            
+            else:
+                st.warning("No explicit win condition defined for this team")
+
+    with tab4:
+        st.header("Team Matchup Analysis")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            team1 = st.selectbox("Select Your Team", sorted(df['Team'].unique()), key='matchup_team1')
+        
+        with col2:
+            team2 = st.selectbox("Select Opponent Team", sorted(df['Team'].unique()), key='matchup_team2')
+        
+        if team1 and team2:
+            team1_df = df[df['Team'] == team1]
+            team2_df = df[df['Team'] == team2]
+            
+            # Type coverage comparison
+            team1_types = team1_df['Type1'].tolist() + team1_df['Type2'].dropna().tolist()
+            team2_types = team2_df['Type1'].tolist() + team2_df['Type2'].dropna().tolist()
+            
+            team1_coverage = calculate_team_coverage(team1_types)
+            team2_coverage = calculate_team_coverage(team2_types)
+            
+            # Threats and opportunities
+            st.subheader("Matchup Summary")
+            
+            # Threats from opponent
+            threats = []
+            for t in team2_coverage['offensive_coverage']:
+                if t in team1_coverage['uncovered_weaknesses']:
+                    threats.append(t)
+            
+            if threats:
+                st.error(f"⚠️ **Threats:** Opponent's {', '.join(threats)} attacks are super effective against your team")
+            else:
+                st.success("✅ No major type disadvantages against opponent")
+            
+            # Opportunities against opponent
+            opportunities = []
+            for t in team1_coverage['offensive_coverage']:
+                if t in team2_coverage['uncovered_weaknesses']:
+                    opportunities.append(t)
+            
+            if opportunities:
+                st.success(f"✨ **Opportunities:** Your {', '.join(opportunities)} attacks are super effective against opponent")
+            else:
+                st.warning("No clear type advantages against opponent")
+            
+            st.divider()
+            
+            # Detailed coverage comparison
+            st.subheader("Detailed Coverage Comparison")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write(f"### Your Team ({team1})")
+                st.write("**Uncovered Weaknesses:**")
+                if team1_coverage['uncovered_weaknesses']:
+                    for weakness in team1_coverage['uncovered_weaknesses']:
+                        st.error(weakness)
+                else:
+                    st.success("All weaknesses covered!")
+                
+                st.write("**Excellent Coverage (3+):**")
+                if team1_coverage['excellent_coverage']:
+                    for coverage in team1_coverage['excellent_coverage']:
+                        st.success(coverage)
+                else:
+                    st.warning("No excellent coverage")
+            
+            with col2:
+                st.write(f"### Opponent Team ({team2})")
+                st.write("**Uncovered Weaknesses:**")
+                if team2_coverage['uncovered_weaknesses']:
+                    for weakness in team2_coverage['uncovered_weaknesses']:
+                        st.error(weakness)
+                else:
+                    st.success("All weaknesses covered!")
+                
+                st.write("**Excellent Coverage (3+):**")
+                if team2_coverage['excellent_coverage']:
+                    for coverage in team2_coverage['excellent_coverage']:
+                        st.success(coverage)
+                else:
+                    st.warning("No excellent coverage")
+            
+            st.divider()
+            
+            # Suggested counters and strategies
+            st.subheader("Suggested Strategies")
+            
+            # Find Pokémon that can exploit opponent's weaknesses
+            exploiters = []
+            for _, pokemon in team1_df.iterrows():
+                pokemon_types = [pokemon['Type1']]
+                if pd.notna(pokemon['Type2']):
+                    pokemon_types.append(pokemon['Type2'])
+                
+                coverage = calculate_team_coverage(pokemon_types)
+                if any(t in coverage['offensive_coverage'] for t in team2_coverage['uncovered_weaknesses']):
+                    exploiters.append(pokemon['Pokemon'])
+            
+            if exploiters:
+                st.success(f"**Best Counters:** {', '.join(exploiters)} can exploit opponent's weaknesses")
+            
+            # Find Pokémon that resist opponent's strengths
+            defenders = []
+            for _, pokemon in team1_df.iterrows():
+                pokemon_types = [pokemon['Type1']]
+                if pd.notna(pokemon['Type2']):
+                    pokemon_types.append(pokemon['Type2'])
+                
+                resists = set()
+                for pt in pokemon_types:
+                    resists.update(TYPE_CHART[pt]['resist'])
+                
+                if any(t in resists for t in threats):
+                    defenders.append(pokemon['Pokemon'])
+            
+            if defenders:
+                st.info(f"**Defensive Options:** {', '.join(defenders)} resist opponent's threats")
+
+if __name__ == "__main__":
+    main()
