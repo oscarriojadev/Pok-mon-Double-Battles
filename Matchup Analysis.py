@@ -252,8 +252,8 @@ def calculate_damage(attacker, defender, move, battle_state, attacker_team):
     elif terrain == "Psychic" and move_type == "Psychic":
         power *= 1.3
     
-    # Full damage formula
-    damage = int((((((2 * attacker['Level']) / 5) + 2) * power * attack_stat / defense_stat) / 50 + 2) * critical * random_roll * stab * effectiveness
+    # Full damage formula with proper parentheses
+    damage = int((((((2 * attacker['Level']) / 5) + 2) * power * attack_stat / defense_stat / 50 + 2) * critical * random_roll * stab * effectiveness)
     
     return max(1, int(damage))  # Minimum 1 damage
 
