@@ -214,6 +214,7 @@ def main():
             st.subheader("Numerical Comparison")
             st.dataframe(
                 comparison_df.set_index('Team').T.style.highlight_max(axis=1, color='lightgreen')
+            )
             
             # Team composition comparison
             st.subheader("Team Composition")
