@@ -527,7 +527,7 @@ def main():
                     x=[selected_team] + top_similar['Team'].tolist(),
                     y=[1] + top_similar['Similarity'].tolist(),
                     mode='markers',
-                    marker=dict(size=20, color=['blue'] + ['red']*len(top_similar))),
+                    marker=dict(size=20, color=['blue'] + ['red']*len(top_similar)),
                     text=[selected_team] + top_similar['Team'].tolist(),
                     hoverinfo='text',
                     showlegend=False
