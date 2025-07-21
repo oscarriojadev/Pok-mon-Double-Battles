@@ -8,7 +8,27 @@ import plotly.graph_objects as go
 from collections import defaultdict
 from itertools import combinations
 
-# [Previous code with all existing functions remains unchanged until the main() function]
+def load_data(uploaded_file):
+    """Load and preprocess the uploaded CSV file"""
+    df = pd.read_csv(uploaded_file)
+    
+    # Add default columns if not present
+    if 'PrimaryRole' not in df.columns:
+        df['PrimaryRole'] = ''
+    if 'SecondaryRole' not in df.columns:
+        df['SecondaryRole'] = ''
+    if 'Win Condition' not in df.columns:
+        df['Win Condition'] = ''
+    if 'Early Game' not in df.columns:
+        df['Early Game'] = ''
+    if 'Mid Game' not in df.columns:
+        df['Mid Game'] = ''
+    if 'Late Game' not in df.columns:
+        df['Late Game'] = ''
+    if 'Counters' not in df.columns:
+        df['Counters'] = ''
+    
+    return df
 
 def main():
     st.set_page_config(layout="wide", page_title="Pokémon Team Analyzer Pro")
