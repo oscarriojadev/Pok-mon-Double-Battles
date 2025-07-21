@@ -9,6 +9,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import plotly.graph_objects as go
 from collections import defaultdict
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor  # Add Regressor
 
 # Complete type effectiveness chart
 TYPE_CHART = {
@@ -270,17 +271,17 @@ def predict_team_success(df):
     np.random.seed(42)
     features['WinRate'] = np.random.uniform(0.4, 0.9, len(features))
     
-    # Train a simple model
+    # Train a model - CHANGED TO REGRESSOR
     X = features.select_dtypes(include=[np.number]).drop('WinRate', axis=1, errors='ignore')
     y = features['WinRate']
     
     if len(X) > 1:
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        model = RandomForestRegressor(n_estimators=100, random_state=42)  # Changed to Regressor
         model.fit(X_train, y_train)
         
         # Predict for all teams
-        features['PredictedWinRate'] = model.predict_proba(X)[:, 1]
+        features['PredictedWinRate'] = model.predict(X)  # Changed from predict_proba to predict
         return features.sort_values('PredictedWinRate', ascending=False)
     return features.sort_values('WinRate', ascending=False)
 
