@@ -8,6 +8,92 @@ import random
 import joblib
 
 # --------------------------
+# Initialize Battle State
+# --------------------------
+
+def init_battle_state(team1_df, team2_df):
+    """Initialize the battle state dictionary"""
+    if 'battle_state' not in st.session_state:
+        st.session_state.battle_state = {
+            'team1_active': None,
+            'team2_active': None,
+            'weather': None,
+            'terrain': None,
+            'team1_pp': defaultdict(dict),
+            'team2_pp': defaultdict(dict),
+            'team1_tera': defaultdict(bool),
+            'team2_tera': defaultdict(bool),
+            'team1_tera_type': defaultdict(str),
+            'team2_tera_type': defaultdict(str)
+        }
+    
+    # Initialize PP for each Pokémon's moves
+    for _, row in team1_df.iterrows():
+        for i in range(1, 5):
+            move = row[f'Move {i}']
+            if pd.notna(move):
+                st.session_state.battle_state['team1_pp'][row['Pokemon']][move] = 5  # Default PP
+    
+    for _, row in team2_df.iterrows():
+        for i in range(1, 5):
+            move = row[f'Move {i}']
+            if pd.notna(move):
+                st.session_state.battle_state['team2_pp'][row['Pokemon']][move] = 5  # Default PP
+    
+    # Initialize Tera types (simplified - could be expanded)
+    for _, row in team1_df.iterrows():
+        st.session_state.battle_state['team1_tera_type'][row['Pokemon']] = row['Type1']
+    
+    for _, row in team2_df.iterrows():
+        st.session_state.battle_state['team2_tera_type'][row['Pokemon']] = row['Type1']
+
+# --------------------------
+# Battle Controls
+# --------------------------
+
+def render_battle_controls(battle_state):
+    """Render the battle control buttons"""
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("Switch Pokémon"):
+            st.session_state.show_switch_menu = True
+    with col2:
+        if st.button("Use Item"):
+            st.session_state.show_item_menu = True
+    with col3:
+        if st.button("Flee Battle"):
+            st.session_state.battle_log.append("You fled from the battle!")
+            st.session_state.battle_active = False
+
+# --------------------------
+# Execute Move Function
+# --------------------------
+
+def execute_move(attacker, defender, move, battle_state, team):
+    """Execute a move and return damage dealt"""
+    # Simplified damage calculation - replace with your actual formula
+    damage = random.randint(10, 50)
+    
+    # Track PP usage
+    if team == 1:
+        battle_state['team1_pp'][attacker['Pokemon']][move] -= 1
+    else:
+        battle_state['team2_pp'][attacker['Pokemon']][move] -= 1
+    
+    # Log the move
+    st.session_state.battle_log.append(f"{attacker['Pokemon']} used {move}!")
+    
+    return damage
+
+# --------------------------
+# Tera Animation (placeholder)
+# --------------------------
+
+def render_tera_animation(pokemon, tera_type):
+    """Placeholder for tera animation"""
+    st.session_state.battle_log.append(f"{pokemon} Terastallized to {tera_type} type!")
+
+# --------------------------
 # Machine Learning Model for Opponent Move Selection
 # --------------------------
 
@@ -142,11 +228,21 @@ def opponent_turn(battle_state, team1_df, team2_df):
             st.session_state.battle_log.append(f"Opponent's {attacker['Pokemon']} dealt {damage} damage with {move}!")
 
 # --------------------------
-# Modified Main Function with ML Opponent
+# Main Function
 # --------------------------
 
 def main():
     st.title("Pokémon Battle Simulator with AI Opponent")
+    
+    # Initialize session state variables
+    if 'battle_log' not in st.session_state:
+        st.session_state.battle_log = []
+    if 'show_switch_menu' not in st.session_state:
+        st.session_state.show_switch_menu = False
+    if 'show_item_menu' not in st.session_state:
+        st.session_state.show_item_menu = False
+    if 'battle_active' not in st.session_state:
+        st.session_state.battle_active = True
     
     # File upload for teams
     st.sidebar.header("Upload Your Team Data")
@@ -209,16 +305,17 @@ def main():
                                     ['Move 1', 'Move 2', 'Move 3', 'Move 4']].values[0]
                 
                 for i, move in enumerate(moves, 1):
-                    pp_left = battle_state['team1_pp'][your_active].get(move, 0)
-                    if st.button(f"{move} ({pp_left} PP)", key=f"move_{i}"):
-                        attacker = team1_df.loc[team1_df['Pokemon'] == your_active].iloc[0].to_dict()
-                        defender = team2_df.loc[team2_df['Pokemon'] == battle_state['team2_active']].iloc[0].to_dict()
-                        damage = execute_move(attacker, defender, move, battle_state, 1)
-                        if damage > 0:
-                            st.success(f"Dealt {damage} damage!")
-                        
-                        # Opponent's turn
-                        opponent_turn(battle_state, team1_df, team2_df)
+                    if pd.notna(move):
+                        pp_left = battle_state['team1_pp'][your_active].get(move, 0)
+                        if st.button(f"{move} ({pp_left} PP)", key=f"move_{i}"):
+                            attacker = team1_df.loc[team1_df['Pokemon'] == your_active].iloc[0].to_dict()
+                            defender = team2_df.loc[team2_df['Pokemon'] == battle_state['team2_active']].iloc[0].to_dict()
+                            damage = execute_move(attacker, defender, move, battle_state, 1)
+                            if damage > 0:
+                                st.success(f"Dealt {damage} damage!")
+                            
+                            # Opponent's turn
+                            opponent_turn(battle_state, team1_df, team2_df)
             
             # Display battle log
             st.subheader("Battle Log")
