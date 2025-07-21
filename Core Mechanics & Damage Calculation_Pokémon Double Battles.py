@@ -220,13 +220,6 @@ def main():
     
     # New tabs for core mechanics
     tab_names = [
-        "🏆 Team Overview", 
-        "🔍 Pokémon Analysis", 
-        "📊 Team Comparison", 
-        "🤖 ML Recommendations",
-        "🛡️ Type Coverage",
-        "🔄 Team Synergy",
-        "⚔️ Team Matchup",
         "🧮 Damage Calculator",
         "🏃 Speed Analysis",
         "📈 Survival Calculator"
@@ -234,30 +227,8 @@ def main():
     
     tabs = st.tabs(tab_names)
     
-    # Existing tabs (keep all the existing tab implementations)
-    with tabs[0]:  # Team Overview (same as before)
-        # ... (keep existing implementation)
-    
-    with tabs[1]:  # Pokémon Analysis (same as before)
-        # ... (keep existing implementation)
-    
-    with tabs[2]:  # Team Comparison (same as before)
-        # ... (keep existing implementation)
-    
-    with tabs[3]:  # ML Recommendations (same as before)
-        # ... (keep existing implementation)
-    
-    with tabs[4]:  # Type Coverage (same as before)
-        # ... (keep existing implementation)
-    
-    with tabs[5]:  # Team Synergy (same as before)
-        # ... (keep existing implementation)
-    
-    with tabs[6]:  # Team Matchup (same as before)
-        # ... (keep existing implementation)
-    
-    # New Core Mechanics tabs
-    with tabs[7]:  # Damage Calculator
+        # New Core Mechanics tabs
+    with tabs[1]:  # Damage Calculator
         st.header("🧮 Damage Calculator")
         st.write("Calculate damage ranges between Pokémon with EV/IV/Nature/Item modifiers")
         
@@ -338,7 +309,7 @@ def main():
                 survival_hits = hp // max_dmg + (1 if hp % max_dmg else 0)
                 st.metric("Survival Hits", survival_hits)
     
-    with tabs[8]:  # Speed Analysis
+    with tabs[2]:  # Speed Analysis
         st.header("🏃 Speed Tier Analysis")
         st.write("Analyze speed tiers and priority move usage across teams")
         
@@ -422,7 +393,7 @@ def main():
             else:
                 st.warning(f"No speed control moves detected in {selected_team}")
     
-    with tabs[9]:  # Survival Calculator
+    with tabs[3]:  # Survival Calculator
         st.header("📈 Survival Benchmark Calculator")
         st.write("Determine if your Pokémon can survive specific attacks")
         
