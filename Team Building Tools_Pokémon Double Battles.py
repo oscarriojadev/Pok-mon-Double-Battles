@@ -229,7 +229,7 @@ def main():
             st.dataframe(team_df[['Pokemon', 'Type', 'PrimaryRole', 'SecondaryRole'] + stats])
     
     # 2. Pokémon Analysis Tab
-    with tabs[1]:
+    with tabs[1]:  # Pokémon Analysis Tab
         st.header("🔍 Individual Pokémon Analysis")
         
         # Pokémon Selector
@@ -243,12 +243,77 @@ def main():
             st.write(f"**Type:** {pokemon_data['Type']}")
             st.write(f"**Primary Role:** {pokemon_data['PrimaryRole']}")
             st.write(f"**Secondary Role:** {pokemon_data['SecondaryRole']}")
+            st.write(f"**Ability:** {pokemon_data['Ability']}")
+            st.write(f"**Item:** {pokemon_data['Item']}")
+            st.write(f"**Nature:** {pokemon_data['Nature']}")
+            
+            # Display stat modifications from nature
+            if isinstance(pokemon_data['Nature'], str):
+                nature = pokemon_data['Nature'].split()[0]  # Take first word if multiple
+                if '+' in nature and '-' in nature:
+                    increased_stat = nature.split('+')[1].split('-')[0]
+                    decreased_stat = nature.split('-')[1]
+                    st.write(f"**Nature Effect:** +{increased_stat}, -{decreased_stat}")
         
         with col2:
-            # Stats Bar Chart
+            # Calculate modified stats accounting for nature/items/abilities
             stats = ['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']
-            fig = px.bar(pokemon_data[stats], orientation='h',
-                        title="Base Stats", labels={'value': 'Stat Value', 'index': 'Stat'})
+            base_stats = pokemon_data[stats].copy()
+            modified_stats = base_stats.copy()
+            
+            # Apply nature modifiers
+            if isinstance(pokemon_data['Nature'], str):
+                nature = pokemon_data['Nature'].split()[0]
+                if '+' in nature and '-' in nature:
+                    increased_stat = nature.split('+')[1].split('-')[0].strip()
+                    decreased_stat = nature.split('-')[1].strip()
+                    
+                    if increased_stat in stats:
+                        modified_stats[increased_stat] *= 1.1
+                    if decreased_stat in stats:
+                        modified_stats[decreased_stat] *= 0.9
+            
+            # Apply item modifiers (simplified examples)
+            item = str(pokemon_data['Item']).lower()
+            if 'choice band' in item:
+                modified_stats['Attack'] *= 1.5
+            elif 'choice specs' in item:
+                modified_stats['Sp. Atk'] *= 1.5
+            elif 'life orb' in item:
+                modified_stats['Attack'] *= 1.3
+                modified_stats['Sp. Atk'] *= 1.3
+            elif 'assault vest' in item:
+                modified_stats['Sp. Def'] *= 1.5
+            
+            # Create comparison dataframe
+            stats_df = pd.DataFrame({
+                'Stat': stats,
+                'Base': base_stats.values,
+                'Modified': modified_stats.values
+            })
+            
+            # Add difference column
+            stats_df['Difference'] = stats_df['Modified'] - stats_df['Base']
+            
+            # Visualize stats with modifications
+            fig = px.bar(stats_df, x='Stat', y=['Base', 'Modified'], 
+                         barmode='group', title="Base vs Modified Stats",
+                         labels={'value': 'Stat Value', 'variable': 'Stat Type'},
+                         color_discrete_map={'Base': '#636EFA', 'Modified': '#EF553B'})
+            
+            # Add ability effects to the description
+            ability_desc = ""
+            ability = pokemon_data['Ability']
+            if ability == 'Intimidate':
+                ability_desc = "Lowers opponents' Attack by 1 stage on switch-in"
+            elif ability == 'Sand Rush':
+                ability_desc = "Doubles Speed in Sandstorm"
+            elif ability == 'Protosynthesis':
+                ability_desc = "Boosts highest stat in Harsh Sunlight"
+                
+            if ability_desc:
+                st.write(f"**Ability Effect:** {ability_desc}")
+            
             st.plotly_chart(fig, use_container_width=True)
         
         # Moves and Counters
@@ -268,12 +333,32 @@ def main():
                 for counter in counters:
                     st.write(f"- {counter.strip()}")
         
+        # Detailed Stat Analysis
+        st.subheader("Detailed Stat Analysis")
+        
+        # Show stat modifications table
+        st.dataframe(
+            stats_df.style.format("{:.1f}").apply(
+                lambda x: ['background-color: lightgreen' if v > 0 else '' for v in x], 
+                subset=['Difference']
+            ).apply(
+                lambda x: ['background-color: lightcoral' if v < 0 else '' for v in x],
+                subset=['Difference']
+            ),
+            column_config={
+                "Stat": "Stat",
+                "Base": st.column_config.NumberColumn("Base Stat"),
+                "Modified": st.column_config.NumberColumn("Modified Stat"),
+                "Difference": st.column_config.NumberColumn("Difference")
+            }
+        )
+        
         # Performance by Game Phase
         st.subheader("Performance by Game Phase")
         phases = ['Early Game', 'Mid Game', 'Late Game']
         phase_perf = {phase: pokemon_data.get(phase, '') for phase in phases}
         st.write(pd.DataFrame.from_dict(phase_perf, orient='index', columns=['Performance']))
-    
+        
     # 3. Team Comparison Tab
     with tabs[2]:
         st.header("📊 Team Comparison Analysis")
