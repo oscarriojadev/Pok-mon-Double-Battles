@@ -32,6 +32,47 @@ TYPE_CHART = {
 
 ALL_TYPES = sorted(TYPE_CHART.keys())
 
+def calculate_team_coverage(team_types):
+    # Calculate team's defensive coverage
+    weaknesses = defaultdict(int)
+    resists = defaultdict(int)
+    immunities = set()
+    
+    # Count weaknesses and resistances across all team types
+    for t in team_types:
+        type_data = TYPE_CHART.get(t, {})
+        
+        # Count weaknesses
+        for weak_to in type_data.get('weak', []):
+            weaknesses[weak_to] += 1
+            
+        # Count resistances
+        for resists_to in type_data.get('resist', []):
+            resists[resists_to] += 1
+            
+        # Track immunities
+        for immune_to in type_data.get('immune', []):
+            immunities.add(immune_to)
+    
+    # Determine coverage
+    uncovered_weaknesses = []
+    resisted_types = []
+    
+    for t in ALL_TYPES:
+        # If more weaknesses than resistances for this type, it's a problem
+        if weaknesses.get(t, 0) > resists.get(t, 0):
+            uncovered_weaknesses.append(t)
+        
+        # If we have at least one resistance to this type
+        if resists.get(t, 0) > 0:
+            resisted_types.append(t)
+    
+    return {
+        'uncovered_weaknesses': uncovered_weaknesses,
+        'resisted_types': resisted_types,
+        'immune_types': list(immunities)
+    }
+
 # Load data with caching
 @st.cache_data
 def load_data(uploaded_file):
