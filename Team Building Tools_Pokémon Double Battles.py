@@ -336,9 +336,13 @@ def main():
         # Detailed Stat Analysis
         st.subheader("Detailed Stat Analysis")
         
-        # Show stat modifications table
+
         st.dataframe(
-            stats_df.style.format("{:.1f}").apply(
+            stats_df.style.format({
+                "Base": "{:.1f}",
+                "Modified": "{:.1f}",
+                "Difference": "{:.1f}"
+            }).apply(
                 lambda x: ['background-color: lightgreen' if v > 0 else '' for v in x], 
                 subset=['Difference']
             ).apply(
