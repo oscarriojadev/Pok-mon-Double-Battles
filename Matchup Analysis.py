@@ -67,12 +67,8 @@ TERA_TYPES = {
     "Gholdengo": ["Steel", "Ghost", "Fairy"],
     "Iron Hands": ["Fighting", "Electric", "Ground"],
     "Mimikyu": ["Ghost", "Fairy", "Steel"],
-    
-    # Physical Offense Core (1)
-    # (No new Pokémon beyond what's already listed)
 }
 
-# Complete Move PP (default values if not specified)
 # Complete Move PP (default values if not specified)
 MOVE_PP = {
     "Protect": 10,
@@ -176,7 +172,6 @@ MOVE_PP = {
     "Wide Guard": 16,
     "Eruption": 8,
     "Giga Drain": 16,
-    # Add more moves as needed
 }
 
 # Complete Move Power values
@@ -198,8 +193,6 @@ MOVE_POWER = {
     "Extreme Speed": 80,
     "Fake Out": 40,
     "Counter": 0,  # Special calculation
-    # Add more moves as needed
-    # Using standard PP values for each move based on their typical values in Pokémon games. For moves that weren't in the original dictionary, I've assigned them their standard PP values (usually 16 for most attacking moves, 10 for some status moves, etc.).
 }
 
 # Type Chart for damage calculation
@@ -276,6 +269,10 @@ def init_battle_state(team1_df, team2_df):
             'last_move': None,
             'battle_log': []
         }
+    
+    # Initialize root level battle_log if it doesn't exist
+    if 'battle_log' not in st.session_state:
+        st.session_state.battle_log = []
 
 # --------------------------
 # Full Gen 9 Damage Calculation
@@ -378,19 +375,17 @@ def calculate_damage(attacker, defender, move, battle_state, attacker_team):
     damage = (
         (
             (
-                (
-                    (2 * attacker['Level'] / 5 + 2) 
-                    * power 
-                    * attack_stat 
-                    / defense_stat 
-                    / 50 
-                    + 2
-                ) 
-                * critical 
-                * random_roll 
-                * stab 
-                * effectiveness
-            )
+                (2 * attacker['Level'] / 5 + 2) 
+                * power 
+                * attack_stat 
+                / defense_stat 
+                / 50 
+                + 2
+            ) 
+            * critical 
+            * random_roll 
+            * stab 
+            * effectiveness
         )
     )
     
@@ -433,7 +428,14 @@ def render_tera_animation(pokemon, tera_type):
     </div>
     """, unsafe_allow_html=True)
     
-    # Play sound effect (placeholder)
+    # Initialize battle_log if it doesn't exist
+    if 'battle_log' not in st.session_state:
+        st.session_state.battle_log = []
+    
+    # Add to both battle_state's log and root log if they exist
+    if 'battle_state' in st.session_state and 'battle_log' in st.session_state.battle_state:
+        st.session_state.battle_state['battle_log'].append(f"*{pokemon} Terastallized into the {tera_type} type!*")
+    
     st.session_state.battle_log.append(f"*{pokemon} Terastallized into the {tera_type} type!*")
 
 # --------------------------
@@ -483,6 +485,10 @@ def execute_move(attacker, defender, move, battle_state, attacker_team):
     elif move == "Spore":
         defender['status'] = "Sleep"
     
+    # Initialize battle_log if it doesn't exist
+    if 'battle_log' not in st.session_state:
+        st.session_state.battle_log = []
+    
     # Update battle log
     log_entry = f"{attacker['Pokemon']} used {move}!"
     if damage > 0:
@@ -529,7 +535,10 @@ def render_battle_controls(battle_state):
 # --------------------------
 
 def main():
-    # Example usage - you'll need to replace this with your actual Streamlit setup
+    # Initialize session state if it doesn't exist
+    if 'battle_log' not in st.session_state:
+        st.session_state.battle_log = []
+    
     st.title("Pokémon Battle Simulator")
     
     # Sample team data
@@ -621,8 +630,8 @@ def main():
     
     # Display battle log
     st.subheader("Battle Log")
-    if 'battle_log' in st.session_state.battle_state:
-        for entry in st.session_state.battle_state['battle_log'][-10:]:
+    if 'battle_log' in st.session_state:
+        for entry in st.session_state.battle_log[-10:]:
             st.write(entry)
 
 if __name__ == "__main__":
