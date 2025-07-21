@@ -7,9 +7,25 @@ from sklearn.metrics.pairwise import cosine_similarity
 import plotly.graph_objects as go
 from collections import defaultdict
 
-# Complete type effectiveness chart (same as before)
 TYPE_CHART = {
-    # ... (keep the existing TYPE_CHART dictionary)
+    'Normal': {'weak': ['Fighting'], 'resist': [], 'immune': ['Ghost'], 'strong_against': []},
+    'Fire': {'weak': ['Water', 'Ground', 'Rock'], 'resist': ['Fire', 'Grass', 'Ice', 'Bug', 'Steel', 'Fairy'], 'immune': [], 'strong_against': ['Grass', 'Ice', 'Bug', 'Steel']},
+    'Water': {'weak': ['Electric', 'Grass'], 'resist': ['Fire', 'Water', 'Ice', 'Steel'], 'immune': [], 'strong_against': ['Fire', 'Ground', 'Rock']},
+    'Electric': {'weak': ['Ground'], 'resist': ['Electric', 'Flying', 'Steel'], 'immune': [], 'strong_against': ['Water', 'Flying']},
+    'Grass': {'weak': ['Fire', 'Ice', 'Poison', 'Flying', 'Bug'], 'resist': ['Water', 'Electric', 'Grass', 'Ground'], 'immune': [], 'strong_against': ['Water', 'Ground', 'Rock']},
+    'Ice': {'weak': ['Fire', 'Fighting', 'Rock', 'Steel'], 'resist': ['Ice'], 'immune': [], 'strong_against': ['Grass', 'Ground', 'Flying', 'Dragon']},
+    'Fighting': {'weak': ['Flying', 'Psychic', 'Fairy'], 'resist': ['Bug', 'Rock', 'Dark'], 'immune': [], 'strong_against': ['Normal', 'Ice', 'Rock', 'Dark', 'Steel']},
+    'Poison': {'weak': ['Ground', 'Psychic'], 'resist': ['Grass', 'Fighting', 'Poison', 'Bug', 'Fairy'], 'immune': [], 'strong_against': ['Grass', 'Fairy']},
+    'Ground': {'weak': ['Water', 'Grass', 'Ice'], 'resist': ['Poison', 'Rock'], 'immune': ['Electric'], 'strong_against': ['Fire', 'Electric', 'Poison', 'Rock', 'Steel']},
+    'Flying': {'weak': ['Electric', 'Ice', 'Rock'], 'resist': ['Grass', 'Fighting', 'Bug'], 'immune': ['Ground'], 'strong_against': ['Grass', 'Fighting', 'Bug']},
+    'Psychic': {'weak': ['Bug', 'Ghost', 'Dark'], 'resist': ['Fighting', 'Psychic'], 'immune': [], 'strong_against': ['Fighting', 'Poison']},
+    'Bug': {'weak': ['Fire', 'Flying', 'Rock'], 'resist': ['Grass', 'Fighting', 'Ground'], 'immune': [], 'strong_against': ['Grass', 'Psychic', 'Dark']},
+    'Rock': {'weak': ['Water', 'Grass', 'Fighting', 'Ground', 'Steel'], 'resist': ['Normal', 'Fire', 'Poison', 'Flying'], 'immune': [], 'strong_against': ['Fire', 'Ice', 'Flying', 'Bug']},
+    'Ghost': {'weak': ['Ghost', 'Dark'], 'resist': ['Poison', 'Bug'], 'immune': ['Normal', 'Fighting'], 'strong_against': ['Psychic', 'Ghost']},
+    'Dragon': {'weak': ['Ice', 'Dragon', 'Fairy'], 'resist': ['Fire', 'Water', 'Electric', 'Grass'], 'immune': [], 'strong_against': ['Dragon']},
+    'Dark': {'weak': ['Fighting', 'Bug', 'Fairy'], 'resist': ['Ghost', 'Dark'], 'immune': ['Psychic'], 'strong_against': ['Psychic', 'Ghost']},
+    'Steel': {'weak': ['Fire', 'Fighting', 'Ground'], 'resist': ['Normal', 'Grass', 'Ice', 'Flying', 'Psychic', 'Bug', 'Rock', 'Dragon', 'Steel', 'Fairy'], 'immune': ['Poison'], 'strong_against': ['Ice', 'Rock', 'Fairy']},
+    'Fairy': {'weak': ['Poison', 'Steel'], 'resist': ['Fighting', 'Bug', 'Dark'], 'immune': ['Dragon'], 'strong_against': ['Fighting', 'Dragon', 'Dark']}
 }
 
 ALL_TYPES = sorted(TYPE_CHART.keys())
