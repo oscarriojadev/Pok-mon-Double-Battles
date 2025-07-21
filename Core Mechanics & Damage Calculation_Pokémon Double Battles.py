@@ -38,16 +38,13 @@ WEAKNESS_MULTIPLIER = 2
 RESISTANCE_MULTIPLIER = 0.5
 IMMUNE_MULTIPLIER = 0
 
-# Load data with caching (same as before)
+# Load data with caching
 @st.cache_data
 def load_data(uploaded_file):
     if uploaded_file is not None:
         return pd.read_csv(uploaded_file)
     return None
 
-# ... (keep all existing helper functions like calculate_pokemon_similarity, create_radar_chart, etc.)
-
-# New damage calculation functions
 def calculate_damage(attacker, defender, move_power, move_type, is_physical, is_critical=False):
     """Calculate damage range between two Pokémon"""
     # Get relevant stats
@@ -206,7 +203,6 @@ def calculate_speed_control_effectiveness(team_df):
     
     return pd.DataFrame(control_users)
 
-# Main app with new tabs
 def main():
     st.set_page_config(layout="wide", page_title="Pokémon Team Analyzer")
     
@@ -225,14 +221,16 @@ def main():
     
     df = load_data(uploaded_file)
     
-    # Ensure required columns exist (same as before)
+    # Ensure required columns exist
     required_cols = ['Pokemon', 'Team', 'HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']
     if not all(col in df.columns for col in required_cols):
         st.error(f"CSV must contain these columns: {', '.join(required_cols)}")
         st.stop()
     
-    # Add default columns if not present (same as before)
-    # ... (keep the existing column checks)
+    # Add default columns if not present
+    for col in ['Type2', 'Nature', 'Item'] + [f'Move {i}' for i in range(1,5)]:
+        if col not in df.columns:
+            df[col] = np.nan
     
     # New tabs for core mechanics
     tab_names = [
@@ -243,8 +241,7 @@ def main():
     
     tabs = st.tabs(tab_names)
     
-        # New Core Mechanics tabs
-    with tabs[1]:  # Damage Calculator
+    with tabs[0]:  # Damage Calculator
         st.header("🧮 Damage Calculator")
         st.write("Calculate damage ranges between Pokémon with EV/IV/Nature/Item modifiers")
         
@@ -325,7 +322,7 @@ def main():
                 survival_hits = hp // max_dmg + (1 if hp % max_dmg else 0)
                 st.metric("Survival Hits", survival_hits)
     
-    with tabs[2]:  # Speed Analysis
+    with tabs[1]:  # Speed Analysis
         st.header("🏃 Speed Tier Analysis")
         st.write("Analyze speed tiers and priority move usage across teams")
         
@@ -409,7 +406,7 @@ def main():
             else:
                 st.warning(f"No speed control moves detected in {selected_team}")
     
-    with tabs[3]:  # Survival Calculator
+    with tabs[2]:  # Survival Calculator
         st.header("📈 Survival Benchmark Calculator")
         st.write("Determine if your Pokémon can survive specific attacks")
         
