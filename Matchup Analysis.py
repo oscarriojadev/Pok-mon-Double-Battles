@@ -10,23 +10,66 @@ import random
 
 # Complete Tera Types for each Pokémon
 TERA_TYPES = {
+    # Hyper-Perish Trap (1)
     "Amoonguss": ["Poison", "Grass", "Water"],
     "Chien-Pao": ["Dark", "Ice", "Ghost"],
     "Excadrill": ["Ground", "Steel", "Fighting"],
     "Gothitelle": ["Psychic", "Fairy", "Dark"],
-    "Iron Hands": ["Fighting", "Electric", "Ground"],
-    "Flutter Mane": ["Ghost", "Fairy", "Fire"],
+    "Politoed": ["Water", "Fairy", "Ground"],
+    "Rotom-W": ["Electric", "Water", "Ghost"],
+    
+    # Hyper-Field Control (1)
+    "Corviknight": ["Flying", "Steel", "Fighting"],
+    "Glimmora": ["Rock", "Poison", "Ground"],
+    "Iron Jugulis": ["Dark", "Flying", "Electric"],
     "Tornadus": ["Flying", "Dark", "Ground"],
-    "Rillaboom": ["Grass", "Dragon", "Rock"],
-    "Urshifu": ["Water", "Dark", "Fighting"],
-    "Landorus": ["Ground", "Flying", "Rock"],
-    "Ogerpon": ["Grass", "Water", "Fire"],
+    "Urshifu-Rapid Strike": ["Water", "Fighting", "Dark"],
+    "Weezing-Galar": ["Poison", "Fairy", "Fire"],
+    
+    # Hyper-Disruption Core (1)
+    "Darkrai": ["Dark", "Ghost", "Psychic"],
+    "Flutter Mane": ["Ghost", "Fairy", "Fire"],
+    "Gastrodon": ["Water", "Ground", "Poison"],
+    
+    # Counter Dual Trick Room Core (1)
+    "Cresselia": ["Psychic", "Fairy", "Ice"],
+    "Dragapult": ["Dragon", "Ghost", "Fire"],
+    "Glastrier": ["Ice", "Ground", "Steel"],
     "Incineroar": ["Fire", "Dark", "Flying"],
-    "Indeedee": ["Psychic", "Fairy", "Normal"],
-    "Torkoal": ["Fire", "Rock", "Ground"],
-    "Farigiraf": ["Normal", "Psychic", "Fairy"],
+    "Landorus-T": ["Ground", "Flying", "Rock"],
+    "Toxapex": ["Poison", "Water", "Steel"],
+    
+    # Electric-Stall (1)
+    "Ferrothorn": ["Grass", "Steel", "Rock"],
+    "Pincurchin": ["Electric", "Water", "Poison"],
+    "Rotom-Wash": ["Electric", "Water", "Ghost"],
+    "Tapu Koko": ["Electric", "Fairy", "Flying"],
+    "Whimsicott": ["Grass", "Fairy", "Flying"],
+    
+    # Field Control Core Counter (1)
+    "Garchomp": ["Dragon", "Ground", "Steel"],
+    "Tyranitar": ["Rock", "Dark", "Ground"],
+    
+    # Sandstorm Hyper Offense (1)
+    "Gengar": ["Ghost", "Poison", "Dark"],
+    "Togekiss": ["Fairy", "Flying", "Psychic"],
+    
+    # Terrain Core Disruption (1)
+    "Landorus-Therian": ["Ground", "Flying", "Rock"],
+    "Urshifu-Rapid-Strike": ["Water", "Fighting", "Dark"],
+    
+    # Rain Offense Counter (1)
     "Pelipper": ["Water", "Flying", "Ground"],
-    # Add more Pokémon as needed
+    "Regieleki": ["Electric", "Steel", "Flying"],
+    "Torkoal": ["Fire", "Rock", "Ground"],
+    
+    # Balanced Pivot Core Counter (1)
+    "Gholdengo": ["Steel", "Ghost", "Fairy"],
+    "Iron Hands": ["Fighting", "Electric", "Ground"],
+    "Mimikyu": ["Ghost", "Fairy", "Steel"],
+    
+    # Physical Offense Core (1)
+    # (No new Pokémon beyond what's already listed)
 }
 
 # Complete Move PP (default values if not specified)
