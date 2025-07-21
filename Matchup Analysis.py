@@ -214,10 +214,10 @@ def find_counterplay_windows(team1_df, team2_df):
             # Check speed tiers
             speed_diff = pokemon1['Speed'] - pokemon2['Speed']
             
-            # Check priority moves
-            priority_moves1 = [move for move in [pokemon1[f'Move {i}'] for i in range(1,5) 
+            # Check priority moves (fixed syntax)
+            priority_moves1 = [move for move in [pokemon1[f'Move {i}'] for i in range(1,5)] 
                              if move in ['Quick Attack', 'Extreme Speed', 'Aqua Jet', 'Bullet Punch', 'Ice Shard', 'Mach Punch', 'Vacuum Wave', 'Sucker Punch']]
-            priority_moves2 = [move for move in [pokemon2[f'Move {i}'] for i in range(1,5) 
+            priority_moves2 = [move for move in [pokemon2[f'Move {i}'] for i in range(1,5)] 
                              if move in ['Quick Attack', 'Extreme Speed', 'Aqua Jet', 'Bullet Punch', 'Ice Shard', 'Mach Punch', 'Vacuum Wave', 'Sucker Punch']]
             
             # Check setup opportunities
