@@ -111,7 +111,7 @@ def opponent_turn(battle_state, team1_df, team2_df):
         ]
         
         if not available_moves:
-            st.session_state.battle_log.append(f"{attacker['Pokemon'] has no moves left!")
+            st.session_state.battle_log.append(f"{attacker['Pokemon']} has no moves left!")
             return
             
         # Get types
