@@ -10,25 +10,6 @@ import plotly.graph_objects as go
 from collections import defaultdict
 from itertools import combinations
 
-# Sample type data for demonstration
-POKEMON_TYPES = {
-    'Pikachu': 'Electric',
-    'Charizard': 'Fire/Flying',
-    'Blastoise': 'Water',
-    'Venusaur': 'Grass/Poison',
-    'Gyarados': 'Water/Flying',
-    'Dragonite': 'Dragon/Flying',
-    'Snorlax': 'Normal',
-    'Alakazam': 'Psychic',
-    'Gengar': 'Ghost/Poison',
-    'Machamp': 'Fighting',
-    'Tyranitar': 'Rock/Dark',
-    'Metagross': 'Steel/Psychic',
-    'Salamence': 'Dragon/Flying',
-    'Heatran': 'Fire/Steel',
-    'Ferrothorn': 'Grass/Steel'
-}
-
 # Sample type effectiveness chart (simplified)
 TYPE_EFFECTIVENESS = {
     'Fire': {'Strong': ['Grass', 'Ice', 'Bug', 'Steel'], 'Weak': ['Water', 'Rock', 'Fire', 'Dragon']},
@@ -50,17 +31,17 @@ def load_data(uploaded_file):
         'Mid Game': '',
         'Late Game': '',
         'Counters': '',
-        'Type': '',
-        'Moves': ''
+        'Type1': '',
+        'Type2': '',
+        'Move1': '',
+        'Move2': '',
+        'Move3': '',
+        'Move4': ''
     }
     
     for col, default_val in default_columns.items():
         if col not in df.columns:
             df[col] = default_val
-    
-    # If Type column is empty, populate with sample data
-    if df['Type'].isnull().all() or (df['Type'] == '').all():
-        df['Type'] = df['Pokemon'].map(POKEMON_TYPES).fillna('Unknown')
     
     return df
 
@@ -77,14 +58,12 @@ def calculate_synergy_scores(team_df):
 
 def analyze_type_coverage(team_df):
     """Analyze team type coverage with proper type distribution"""
-    if 'Type' not in team_df.columns:
-        return None
-    
     type_list = []
-    for types in team_df['Type']:
-        for t in str(types).split('/'):
-            if t and t != 'Unknown':
-                type_list.append(t.strip())
+    for _, row in team_df.iterrows():
+        if pd.notna(row['Type1']):
+            type_list.append(row['Type1'])
+        if pd.notna(row['Type2']):
+            type_list.append(row['Type2'])
     
     type_counts = pd.Series(type_list).value_counts().reset_index()
     type_counts.columns = ['Type', 'Count']
@@ -121,7 +100,6 @@ def generate_ml_recommendations(df, team_name, n_recommendations=3):
 
 def calculate_team_matchup(team1_df, team2_df):
     """Calculate matchup between two teams"""
-    # Simple matchup calculation (would be more sophisticated in real implementation)
     matchup = {
         'Speed Advantage': team1_df['Speed'].mean() - team2_df['Speed'].mean(),
         'Offensive Power': (team1_df['Attack'].mean() + team1_df['Sp. Atk'].mean()) - 
@@ -192,7 +170,14 @@ def main():
             col1, col2 = st.columns(2)
             with col1:
                 # Type Distribution
-                type_counts = team_df['Type'].value_counts()
+                type_list = []
+                for _, row in team_df.iterrows():
+                    if pd.notna(row['Type1']):
+                        type_list.append(row['Type1'])
+                    if pd.notna(row['Type2']):
+                        type_list.append(row['Type2'])
+                
+                type_counts = pd.Series(type_list).value_counts()
                 if not type_counts.empty:
                     fig = px.pie(type_counts, names=type_counts.index, values=type_counts.values,
                                 title="Type Distribution")
@@ -226,10 +211,10 @@ def main():
             
             # Team Members Table
             st.subheader("Team Members")
-            st.dataframe(team_df[['Pokemon', 'Type', 'PrimaryRole', 'SecondaryRole'] + stats])
+            st.dataframe(team_df[['Pokemon', 'Type1', 'Type2', 'PrimaryRole', 'SecondaryRole'] + stats])
     
     # 2. Pokémon Analysis Tab
-    with tabs[1]:  # Pokémon Analysis Tab
+    with tabs[1]:
         st.header("🔍 Individual Pokémon Analysis")
         
         # Pokémon Selector
@@ -240,7 +225,12 @@ def main():
         col1, col2 = st.columns([1, 3])
         with col1:
             st.subheader(selected_pokemon)
-            st.write(f"**Type:** {pokemon_data['Type']}")
+            types = []
+            if pd.notna(pokemon_data['Type1']):
+                types.append(pokemon_data['Type1'])
+            if pd.notna(pokemon_data['Type2']):
+                types.append(pokemon_data['Type2'])
+            st.write(f"**Type:** {'/'.join(types)}")
             st.write(f"**Primary Role:** {pokemon_data['PrimaryRole']}")
             st.write(f"**Secondary Role:** {pokemon_data['SecondaryRole']}")
             st.write(f"**Ability:** {pokemon_data['Ability']}")
@@ -249,7 +239,7 @@ def main():
             
             # Display stat modifications from nature
             if isinstance(pokemon_data['Nature'], str):
-                nature = pokemon_data['Nature'].split()[0]  # Take first word if multiple
+                nature = pokemon_data['Nature'].split()[0]
                 if '+' in nature and '-' in nature:
                     increased_stat = nature.split('+')[1].split('-')[0]
                     decreased_stat = nature.split('-')[1]
@@ -273,7 +263,7 @@ def main():
                     if decreased_stat in stats:
                         modified_stats[decreased_stat] *= 0.9
             
-            # Apply item modifiers (simplified examples)
+            # Apply item modifiers
             item = str(pokemon_data['Item']).lower()
             if 'choice band' in item:
                 modified_stats['Attack'] *= 1.5
@@ -298,8 +288,13 @@ def main():
             # Visualize stats with modifications
             fig = px.bar(stats_df, x='Stat', y=['Base', 'Modified'], 
                          barmode='group', title="Base vs Modified Stats",
-                         labels={'value': 'Stat Value', 'variable': 'Stat Type'},
+                         labels={'value': 'Stat Value', 'variable': 'Stat Type', 'Stat': 'Stat Name'},
                          color_discrete_map={'Base': '#636EFA', 'Modified': '#EF553B'})
+            fig.update_layout(
+                xaxis_title="Stat Name",
+                yaxis_title="Stat Value",
+                legend_title="Stat Type"
+            )
             
             # Add ability effects to the description
             ability_desc = ""
@@ -321,10 +316,9 @@ def main():
         col1, col2 = st.columns(2)
         with col1:
             st.write("**Common Moves:**")
-            if pd.notna(pokemon_data.get('Moves')):
-                moves = pokemon_data['Moves'].split(',')
-                for move in moves:
-                    st.write(f"- {move.strip()}")
+            moves = [pokemon_data[f'Move{i}'] for i in range(1, 5) if pd.notna(pokemon_data.get(f'Move{i}'))]
+            for move in moves:
+                st.write(f"- {move}")
         
         with col2:
             st.write("**Common Counters:**")
@@ -336,7 +330,7 @@ def main():
         # Detailed Stat Analysis
         st.subheader("Detailed Stat Analysis")
         
-
+        # Show stat modifications table
         st.dataframe(
             stats_df.style.format({
                 "Base": "{:.1f}",
@@ -362,7 +356,7 @@ def main():
         phases = ['Early Game', 'Mid Game', 'Late Game']
         phase_perf = {phase: pokemon_data.get(phase, '') for phase in phases}
         st.write(pd.DataFrame.from_dict(phase_perf, orient='index', columns=['Performance']))
-        
+    
     # 3. Team Comparison Tab
     with tabs[2]:
         st.header("📊 Team Comparison Analysis")
@@ -417,12 +411,12 @@ def main():
             
             with col1:
                 st.write(f"**{teams_to_compare[0]} Members**")
-                st.dataframe(df[df['Team'] == teams_to_compare[0]][['Pokemon', 'Type', 'PrimaryRole']])
+                st.dataframe(df[df['Team'] == teams_to_compare[0]][['Pokemon', 'Type1', 'Type2', 'PrimaryRole']])
             
             if len(teams_to_compare) > 1:
                 with col2:
                     st.write(f"**{teams_to_compare[1]} Members**")
-                    st.dataframe(df[df['Team'] == teams_to_compare[1]][['Pokemon', 'Type', 'PrimaryRole']])
+                    st.dataframe(df[df['Team'] == teams_to_compare[1]][['Pokemon', 'Type1', 'Type2', 'PrimaryRole']])
         else:
             st.warning("Please select at least 2 teams to compare")
     
@@ -441,7 +435,14 @@ def main():
                     
                     for i, pokemon in enumerate(recommendations, 1):
                         pokemon_data = df[df['Pokemon'] == pokemon].iloc[0]
-                        with st.expander(f"{i}. {pokemon} ({pokemon_data.get('Type', 'Unknown')})"):
+                        types = []
+                        if pd.notna(pokemon_data['Type1']):
+                            types.append(pokemon_data['Type1'])
+                        if pd.notna(pokemon_data['Type2']):
+                            types.append(pokemon_data['Type2'])
+                        pokemon_type = '/'.join(types) if types else 'Unknown'
+                        
+                        with st.expander(f"{i}. {pokemon} ({pokemon_type})"):
                             st.write(f"**Primary Role:** {pokemon_data.get('PrimaryRole', 'Not specified')}")
                             st.write(f"**Stats:** HP: {pokemon_data['HP']}, Atk: {pokemon_data['Attack']}, Def: {pokemon_data['Defense']}")
                             st.write(f"Sp.Atk: {pokemon_data['Sp. Atk']}, Sp.Def: {pokemon_data['Sp. Def']}, Speed: {pokemon_data['Speed']}")
@@ -476,10 +477,11 @@ def main():
             
             # Get all types on team
             team_types = set()
-            for types in team_df['Type']:
-                for t in str(types).split('/'):
-                    if t and t != 'Unknown':
-                        team_types.add(t.strip())
+            for _, row in team_df.iterrows():
+                if pd.notna(row['Type1']):
+                    team_types.add(row['Type1'])
+                if pd.notna(row['Type2']):
+                    team_types.add(row['Type2'])
             
             # Calculate coverage
             coverage = defaultdict(int)
@@ -626,16 +628,18 @@ def main():
             
             # Get all types from both teams
             team_a_types = set()
-            for types in team_a_df['Type']:
-                for t in str(types).split('/'):
-                    if t and t != 'Unknown':
-                        team_a_types.add(t.strip())
+            for _, row in team_a_df.iterrows():
+                if pd.notna(row['Type1']):
+                    team_a_types.add(row['Type1'])
+                if pd.notna(row['Type2']):
+                    team_a_types.add(row['Type2'])
             
             team_b_types = set()
-            for types in team_b_df['Type']:
-                for t in str(types).split('/'):
-                    if t and t != 'Unknown':
-                        team_b_types.add(t.strip())
+            for _, row in team_b_df.iterrows():
+                if pd.notna(row['Type1']):
+                    team_b_types.add(row['Type1'])
+                if pd.notna(row['Type2']):
+                    team_b_types.add(row['Type2'])
             
             # Display type advantages
             col1, col2 = st.columns(2)
@@ -703,11 +707,11 @@ def main():
                 
                 # Quick stats
                 st.write(f"Team Size: {len(team_df)}")
-                st.write(f"Unique Types: {team_df['Type'].nunique()}")
+                st.write(f"Unique Types: {team_df['Type1'].nunique() + team_df['Type2'].nunique()}")
                 
                 # Visual builder
                 st.write("**Team Visualization**")
-                fig = px.treemap(team_df, path=['Type', 'Pokemon'],
+                fig = px.treemap(team_df, path=['Type1', 'Pokemon'],
                                 color='PrimaryRole', hover_data=['HP', 'Attack', 'Speed'])
                 st.plotly_chart(fig, use_container_width=True)
         
@@ -794,10 +798,11 @@ def main():
             # Type distribution
             st.write("Type Distribution in Current Meta")
             type_list = []
-            for types in df['Type']:
-                for t in str(types).split('/'):
-                    if t and t != 'Unknown':
-                        type_list.append(t.strip())
+            for _, row in df.iterrows():
+                if pd.notna(row['Type1']):
+                    type_list.append(row['Type1'])
+                if pd.notna(row['Type2']):
+                    type_list.append(row['Type2'])
             
             type_dist = pd.Series(type_list).value_counts()
             fig = px.bar(type_dist, title="Type Popularity")
