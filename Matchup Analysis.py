@@ -58,15 +58,15 @@ def render_battle_controls(battle_state, team1_df, team2_df):
     st.subheader("Battle Controls")
     
     # Switch Pokémon controls
-    if st.button("Switch Pokémon"):
+    if st.button("Switch Pokémon", key="switch_pokemon_button"):
         st.session_state.show_switch_menu = True
     
     # Use Item button
-    if st.button("Use Item"):
+    if st.button("Use Item", key="use_item_button"):
         st.session_state.show_item_menu = True
     
     # Flee Battle button
-    if st.button("Flee Battle"):
+    if st.button("Flee Battle", key="flee_battle_button"):
         st.session_state.battle_log.append("You fled from the battle!")
         st.session_state.battle_active = False
     
@@ -77,8 +77,8 @@ def render_battle_controls(battle_state, team1_df, team2_df):
         bench_pokemon = [p for p in team1_df['Pokemon'].unique() if p not in active_pokemon]
         
         if len(battle_state['team1_active']) < 2 and bench_pokemon:
-            selected = st.selectbox("Choose a Pokémon to send out", bench_pokemon)
-            if st.button("Confirm Switch"):
+            selected = st.selectbox("Choose a Pokémon to send out", bench_pokemon, key="switch_selectbox")
+            if st.button("Confirm Switch", key="confirm_switch_button"):
                 battle_state['team1_active'].append(selected)
                 battle_state['team1_bench'].remove(selected)
                 st.session_state.battle_log.append(f"You sent out {selected}!")
@@ -86,7 +86,7 @@ def render_battle_controls(battle_state, team1_df, team2_df):
                 st.rerun()
         else:
             st.warning("You already have 2 Pokémon in battle or no Pokémon left on bench!")
-            if st.button("Cancel"):
+            if st.button("Cancel", key="cancel_switch_button"):
                 st.session_state.show_switch_menu = False
 
 # --------------------------
@@ -293,7 +293,7 @@ def main():
     
     # File upload for the complete dataset
     st.sidebar.header("Upload Pokémon Dataset")
-    uploaded_file = st.sidebar.file_uploader("Choose a CSV file with all Pokémon data", type="csv")
+    uploaded_file = st.sidebar.file_uploader("Choose a CSV file with all Pokémon data", type="csv", key="dataset_uploader")
     
     if uploaded_file is not None:
         try:
@@ -309,7 +309,8 @@ def main():
             your_team = st.multiselect(
                 "Select your 4 Pokémon team",
                 options=full_dataset['Pokemon'].unique(),
-                max_selections=4
+                max_selections=4,
+                key="your_team_select"
             )
             
             # Opponent team selection
@@ -318,7 +319,8 @@ def main():
             opponent_team = st.multiselect(
                 "Select opponent's 4 Pokémon team",
                 options=available_opponents,
-                max_selections=4
+                max_selections=4,
+                key="opponent_team_select"
             )
             
             # Filter the teams from the full dataset
@@ -334,18 +336,20 @@ def main():
                         "Your active Pokémon (select 2)", 
                         your_team,
                         default=your_team[:2],
-                        max_selections=2
+                        max_selections=2,
+                        key="team1_active_select"
                     )
                 with col2:
                     team2_active = st.multiselect(
                         "Opponent's active Pokémon (select 2)", 
                         opponent_team,
                         default=opponent_team[:2],
-                        max_selections=2
+                        max_selections=2,
+                        key="team2_active_select"
                     )
                 
                 # Start battle button
-                if st.button("Start Battle") and len(team1_active) == 2 and len(team2_active) == 2:
+                if st.button("Start Battle", key="start_battle_button") and len(team1_active) == 2 and len(team2_active) == 2:
                     st.session_state.battle_active = True
                     init_battle_state(team1_df, team2_df, team1_active, team2_active)
                     st.session_state.battle_log.append("Double battle started!")
@@ -359,10 +363,10 @@ def main():
                 
                 # Display teams
                 st.subheader("Your Team")
-                st.dataframe(team1_df[['Pokemon', 'Type1', 'Type2'] + [f'Move {i}' for i in range(1, 5)]])
+                st.dataframe(team1_df[['Pokemon', 'Type1', 'Type2'] + [f'Move {i}' for i in range(1, 5)]], key="team1_df_display")
                 
                 st.subheader("Opponent Team")
-                st.dataframe(team2_df[['Pokemon', 'Type1', 'Type2']])
+                st.dataframe(team2_df[['Pokemon', 'Type1', 'Type2']], key="team2_df_display")
                 
                 # Battle controls
                 render_battle_controls(battle_state, team1_df, team2_df)
@@ -372,12 +376,12 @@ def main():
                 col1, col2 = st.columns(2)
                 with col1:
                     st.write("### Your Active Pokémon")
-                    for poke in battle_state['team1_active']:
+                    for idx, poke in enumerate(battle_state['team1_active']):
                         tera_status = " (Terastallized)" if battle_state['team1_tera'][poke] else ""
                         st.write(f"- {poke}{tera_status}")
                         
                         # Tera Activation Button for each Pokémon
-                        if st.button(f"Terastallize {poke}", key=f"tera_{poke}", 
+                        if st.button(f"Terastallize {poke}", key=f"tera_1_{idx}_{poke}", 
                                     disabled=battle_state['team1_tera'][poke]):
                             battle_state['team1_tera'][poke] = True
                             tera_type = battle_state['team1_tera_type'][poke]
@@ -385,13 +389,13 @@ def main():
                 
                 with col2:
                     st.write("### Opponent's Active Pokémon")
-                    for poke in battle_state['team2_active']:
+                    for idx, poke in enumerate(battle_state['team2_active']):
                         tera_status = " (Terastallized)" if battle_state['team2_tera'][poke] else ""
                         st.write(f"- {poke}{tera_status}")
                 
                 # Move selection for each of your active Pokémon
                 st.subheader("Your Move Selection")
-                for poke_name in battle_state['team1_active']:
+                for poke_idx, poke_name in enumerate(battle_state['team1_active']):
                     active_pokemon = team1_df.loc[team1_df['Pokemon'] == poke_name]
                     if not active_pokemon.empty:
                         poke = active_pokemon.iloc[0]
@@ -400,15 +404,15 @@ def main():
                         
                         # Choose target for each move
                         target_options = battle_state['team2_active']
-                        for i, move in enumerate(moves, 1):
+                        for move_idx, move in enumerate(moves, 1):
                             if pd.notna(move):
                                 pp_left = battle_state['team1_pp'][poke_name].get(move, 0)
                                 target = st.selectbox(
                                     f"Target for {move} ({pp_left} PP)", 
                                     target_options,
-                                    key=f"target_{poke_name}_{i}"
+                                    key=f"target_1_{poke_idx}_{move_idx}"
                                 )
-                                if st.button(f"Use {move}", key=f"move_{poke_name}_{i}"):
+                                if st.button(f"Use {move}", key=f"move_1_{poke_idx}_{move_idx}"):
                                     defender = team2_df.loc[team2_df['Pokemon'] == target].iloc[0].to_dict()
                                     damage = execute_move(
                                         poke.to_dict(), 
@@ -431,7 +435,7 @@ def main():
                         st.write(entry)
                 
                 # Save battle data for ML training
-                if st.button("Save Battle Data"):
+                if st.button("Save Battle Data", key="save_battle_data_button"):
                     save_battle_data(team1_df, team2_df, battle_state)
                     st.success("Battle data saved for future AI training!")
         
