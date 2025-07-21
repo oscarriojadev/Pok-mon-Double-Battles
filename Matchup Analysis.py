@@ -104,7 +104,7 @@ def execute_move(attacker, defender, move, battle_state, team, target_position=N
     else:
         battle_state['team2_pp'][attacker['Pokemon']][move] -= 1
     
-    # Log the move with target information
+    # Log the move with target information - using full Pokémon names
     target_info = f" on opponent's {defender['Pokemon']}" if target_position is not None else ""
     st.session_state.battle_log.append(f"{attacker['Pokemon']} used {move}{target_info}!")
     
@@ -265,7 +265,7 @@ def opponent_turn(battle_state, team1_df, team2_df):
                 # If predicted move not available (shouldn't happen), choose random
                 move = predicted_move if predicted_move in available_moves else random.choice(available_moves)
                 
-                # Execute move
+                # Execute move - now showing full Pokémon names
                 damage = execute_move(attacker, defender, move, battle_state, 2, target_position=team1_active.index(defender))
                 if damage > 0:
                     st.session_state.battle_log.append(f"Opponent's {attacker['Pokemon']} dealt {damage} damage to {defender['Pokemon']} with {move}!")
