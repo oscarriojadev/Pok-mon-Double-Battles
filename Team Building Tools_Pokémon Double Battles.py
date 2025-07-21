@@ -9,6 +9,20 @@ import plotly.graph_objects as go
 from collections import defaultdict
 from itertools import combinations
 
+# Sample type data for demonstration
+POKEMON_TYPES = {
+    'Pikachu': 'Electric',
+    'Charizard': 'Fire/Flying',
+    'Blastoise': 'Water',
+    'Venusaur': 'Grass/Poison',
+    'Gyarados': 'Water/Flying',
+    'Dragonite': 'Dragon/Flying',
+    'Snorlax': 'Normal',
+    'Alakazam': 'Psychic',
+    'Gengar': 'Ghost/Poison',
+    'Machamp': 'Fighting'
+}
+
 def load_data(uploaded_file):
     """Load and preprocess the uploaded CSV file"""
     df = pd.read_csv(uploaded_file)
@@ -30,6 +44,10 @@ def load_data(uploaded_file):
         if col not in df.columns:
             df[col] = default_val
     
+    # If Type column is empty, populate with sample data
+    if df['Type'].isnull().all() or (df['Type'] == '').all():
+        df['Type'] = df['Pokemon'].map(POKEMON_TYPES).fillna('Unknown')
+    
     return df
 
 def calculate_synergy_scores(team_df):
@@ -44,20 +62,25 @@ def calculate_synergy_scores(team_df):
     return synergy_matrix
 
 def analyze_type_coverage(team_df):
-    """Analyze team type coverage"""
-    # This would use actual type data in a real implementation
+    """Analyze team type coverage with proper type distribution"""
     if 'Type' not in team_df.columns:
         return None
     
-    type_counts = team_df['Type'].value_counts().reset_index()
+    # Split dual types and count each type separately
+    type_list = []
+    for types in team_df['Type']:
+        for t in str(types).split('/'):
+            if t and t != 'Unknown':
+                type_list.append(t.strip())
+    
+    type_counts = pd.Series(type_list).value_counts().reset_index()
     type_counts.columns = ['Type', 'Count']
     return type_counts
 
 def generate_ml_recommendations(df, team_name):
     """Generate ML-based recommendations for team improvement"""
-    # Simple clustering-based recommendation (would be more sophisticated in production)
     numeric_cols = ['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']
-    kmeans = KMeans(n_clusters=3)
+    kmeans = KMeans(n_clusters=3, random_state=42)
     df['cluster'] = kmeans.fit_predict(df[numeric_cols])
     
     team_cluster = df[df['Team'] == team_name]['cluster'].mode()[0]
@@ -89,7 +112,7 @@ def main():
         st.stop()
     
     # Main tabs
-    tab_names = [
+    tabs = st.tabs([
         "🏆 Team Overview", 
         "🔍 Pokémon Analysis", 
         "📊 Team Comparison", 
@@ -99,168 +122,186 @@ def main():
         "⚔️ Team Matchup",
         "🧩 Enhanced Team Building",
         "📈 Meta Analysis"
-    ]
+    ])
     
-    tabs = st.tabs(tab_names)
-    
-    # [Previous tab implementations...]
-    
-    with tabs[2]:  # Team Comparison
-        st.header("📊 Team Comparison")
-        teams = st.multiselect("Select teams to compare", sorted(df['Team'].unique()), default=sorted(df['Team'].unique())[:2])
+    with tabs[0]:  # Team Overview
+        st.header("🏆 Team Overview Dashboard")
+        selected_team = st.selectbox("Select Team", sorted(df['Team'].unique()))
+        team_df = df[df['Team'] == selected_team]
         
-        if len(teams) >= 2:
-            comparison_df = df[df['Team'].isin(teams)]
+        if not team_df.empty:
+            # Team summary stats
+            st.subheader(f"Team Composition: {selected_team}")
+            st.dataframe(team_df[['Pokemon', 'Type', 'PrimaryRole', 'SecondaryRole']])
             
-            # Compare average stats
-            avg_stats = comparison_df.groupby('Team')[['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']].mean()
-            st.subheader("Average Stats Comparison")
-            st.dataframe(avg_stats.style.highlight_max(axis=0))
+            # Key metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Team Size", len(team_df))
+            with col2:
+                st.metric("Average Speed", f"{team_df['Speed'].mean():.1f}")
+            with col3:
+                st.metric("Total Power", f"{team_df['Attack'].sum() + team_df['Sp. Atk'].sum():.1f}")
             
-            # Radar chart comparison
-            st.subheader("Radar Chart Comparison")
-            fig = go.Figure()
-            
-            for team in teams:
-                team_avg = avg_stats.loc[team]
-                fig.add_trace(go.Scatterpolar(
-                    r=team_avg.values,
-                    theta=team_avg.index,
-                    fill='toself',
-                    name=team
-                ))
-            
-            fig.update_layout(polar=dict(radialaxis=dict(visible=True)), showlegend=True)
+            # Team stats radar chart
+            st.subheader("Team Stats Distribution")
+            avg_stats = team_df[['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']].mean()
+            fig = go.Figure(go.Scatterpolar(
+                r=avg_stats.values,
+                theta=avg_stats.index,
+                fill='toself'
+            ))
+            fig.update_layout(polar=dict(radialaxis=dict(visible=True)), showlegend=False)
             st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.warning("Please select at least 2 teams for comparison")
     
-    with tabs[3]:  # ML Recommendations
-        st.header("🤖 Machine Learning Recommendations")
-        selected_team = st.selectbox("Select team for recommendations", sorted(df['Team'].unique()))
+    with tabs[1]:  # Pokémon Analysis
+        st.header("🔍 Individual Pokémon Analysis")
+        selected_pokemon = st.selectbox("Select Pokémon", sorted(df['Pokemon'].unique()))
+        pokemon_data = df[df['Pokemon'] == selected_pokemon].iloc[0]
         
-        if st.button("Generate Recommendations"):
-            with st.spinner("Analyzing team composition..."):
-                recommendations = generate_ml_recommendations(df, selected_team)
-                
-                st.subheader("Recommended Pokémon Additions")
-                st.write("Based on similar team compositions, consider adding:")
-                
-                for i, pokemon in enumerate(recommendations, 1):
-                    st.write(f"{i}. {pokemon}")
-                
-                st.info("These recommendations are generated using clustering algorithms that identify Pokémon with similar stat distributions to your current team members")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Base Stats")
+            stats = ['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']
+            values = [pokemon_data[stat] for stat in stats]
+            
+            fig = go.Figure(go.Scatterpolar(
+                r=values,
+                theta=stats,
+                fill='toself'
+            ))
+            fig.update_layout(polar=dict(radialaxis=dict(visible=True)), showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            st.subheader("Pokémon Details")
+            st.write(f"**Type:** {pokemon_data.get('Type', 'Unknown')}")
+            st.write(f"**Primary Role:** {pokemon_data.get('PrimaryRole', 'Not specified')}")
+            st.write(f"**Secondary Role:** {pokemon_data.get('SecondaryRole', 'Not specified')}")
+            st.write(f"**Win Condition:** {pokemon_data.get('Win Condition', 'Not specified')}")
+            
+            st.subheader("Stat Comparison")
+            team_avg = df[df['Team'] == pokemon_data['Team']][stats].mean()
+            comparison = pd.DataFrame({
+                'Stat': stats,
+                'Pokemon': values,
+                'Team Average': team_avg.values
+            })
+            st.bar_chart(comparison.set_index('Stat'))
     
     with tabs[4]:  # Type Coverage
-        st.header("🛡️ Type Coverage Analysis")
-        selected_team = st.selectbox("Select team for type analysis", sorted(df['Team'].unique()))
+        st.header("🛡️ Team Type Coverage Analysis")
+        selected_team = st.selectbox("Select team for type analysis", sorted(df['Team'].unique()), key='type_team')
         team_df = df[df['Team'] == selected_team]
         
         if not team_df.empty:
             type_counts = analyze_type_coverage(team_df)
             
-            if type_counts is not None:
+            if type_counts is not None and not type_counts.empty:
                 st.subheader("Type Distribution")
-                fig = px.pie(type_counts, values='Count', names='Type', title="Team Type Composition")
+                fig = px.pie(type_counts, values='Count', names='Type', 
+                            title="Team Type Composition",
+                            hole=0.3)
                 st.plotly_chart(fig, use_container_width=True)
                 
                 st.subheader("Type Coverage Assessment")
-                st.write("""
-                - **Strong Against**: Shows types your team has advantage against
-                - **Weak Against**: Shows types that threaten your team
-                - **Missing Coverage**: Important types your team doesn't counter
-                """)
                 
-                # This would be expanded with actual type matchup data
+                # Sample type effectiveness (would be more sophisticated in real implementation)
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    st.write("**Strong Against**")
-                    st.write("- Water\n- Ground\n- Fire")
+                    st.info("**Strong Against**")
+                    st.write("- Water\n- Ground\n- Rock")
                 with col2:
-                    st.write("**Weak Against**")
-                    st.write("- Electric\n- Flying\n- Psychic")
+                    st.warning("**Weak Against**")
+                    st.write("- Electric\n- Psychic\n- Dragon")
                 with col3:
-                    st.write("**Missing Coverage**")
-                    st.write("- Dragon\n- Steel\n- Fairy")
+                    st.error("**Missing Coverage**")
+                    st.write("- Steel\n- Fairy\n- Dark")
+                
+                st.subheader("Suggested Improvements")
+                st.write("Consider adding Pokémon with these types to improve coverage:")
+                st.write("- Steel type for defensive utility")
+                st.write("- Fairy type for Dragon resistance")
+                st.write("- Dark type for Psychic immunity")
             else:
-                st.warning("Type data not available in the dataset")
+                st.warning("Could not analyze type coverage - type data may be missing")
     
-    with tabs[5]:  # Team Synergy
-        st.header("🔄 Team Synergy Analysis")
-        selected_team = st.selectbox("Select Team", sorted(df['Team'].unique()), key='synergy_team')
+    with tabs[7]:  # Enhanced Team Building
+        st.header("🧩 Enhanced Team Building Tools")
+        selected_team = st.selectbox("Select Team", sorted(df['Team'].unique()), key='enhanced_team')
         team_df = df[df['Team'] == selected_team]
         
         if not team_df.empty:
-            synergy_matrix = calculate_synergy_scores(team_df)
+            # Role analysis
+            st.subheader("Role Composition")
+            roles = team_df['PrimaryRole'].value_counts()
+            if not roles.empty:
+                fig = px.pie(roles, values=roles.values, names=roles.index,
+                            title="Primary Role Distribution")
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("No role data available for this team")
             
-            st.write("""
-            ### Understanding the Team Synergy Matrix
+            # Team balance assessment
+            st.subheader("Team Balance Assessment")
+            offense = team_df['Attack'].mean() + team_df['Sp. Atk'].mean()
+            defense = team_df['Defense'].mean() + team_df['Sp. Def'].mean()
+            speed = team_df['Speed'].mean()
             
-            The synergy matrix shows how well each Pokémon's stat distribution complements others on your team:
+            balance_df = pd.DataFrame({
+                'Category': ['Offense', 'Defense', 'Speed'],
+                'Score': [offense, defense, speed]
+            })
             
-            - **High values (closer to 1)**: These Pokémon have similar stat distributions, which can be good for balanced teams but may indicate redundancy
-            - **Low values (closer to 0)**: These Pokémon have different stat distributions, which can provide coverage but may lack synergy
-            - **Negative values**: These Pokémon have opposing stat distributions (rare)
-            
-            Ideal teams often show moderate synergy (0.4-0.7) between most members with some specialized pairs.
-            """)
-            
-            fig = px.imshow(
-                synergy_matrix,
-                labels=dict(x="Pokémon", y="Pokémon", color="Synergy"),
-                x=team_df['Pokemon'].tolist(),
-                y=team_df['Pokemon'].tolist(),
-                title="Team Synergy Matrix",
-                color_continuous_scale='RdYlGn',
-                zmin=-1, zmax=1
-            )
+            fig = px.bar(balance_df, x='Category', y='Score', 
+                        title="Team Balance Metrics",
+                        color='Category')
             st.plotly_chart(fig, use_container_width=True)
+            
+            # Recommendations
+            st.subheader("Team Building Recommendations")
+            if offense > defense + 50:
+                st.warning("Your team is offense-heavy. Consider adding more defensive Pokémon.")
+            elif defense > offense + 50:
+                st.warning("Your team is defense-heavy. Consider adding more offensive threats.")
+            else:
+                st.success("Your team has good offensive/defensive balance!")
+            
+            if speed < 80:
+                st.warning("Your team is slow. Consider adding speed control options like Tailwind or Trick Room.")
     
-    with tabs[6]:  # Team Matchup
-        st.header("⚔️ Team Matchup Analysis")
-        col1, col2 = st.columns(2)
+    with tabs[8]:  # Meta Analysis
+        st.header("📈 Meta Analysis Dashboard")
         
-        with col1:
-            team_a = st.selectbox("Your Team", sorted(df['Team'].unique()), key='team_a')
-        with col2:
-            team_b = st.selectbox("Opponent Team", sorted(df['Team'].unique()), key='team_b')
+        # Usage statistics
+        st.subheader("Pokémon Usage Statistics")
+        usage = df['Pokemon'].value_counts().head(20).reset_index()
+        usage.columns = ['Pokemon', 'Usage Count']
+        fig = px.bar(usage, x='Pokemon', y='Usage Count', 
+                     title="Top 20 Most Used Pokémon")
+        st.plotly_chart(fig, use_container_width=True)
         
-        if team_a and team_b:
-            st.subheader("Matchup Analysis")
-            
-            # Simple matchup analysis (would be more sophisticated in real implementation)
-            st.write("""
-            **Key Matchup Factors:**
-            
-            1. **Speed Control**: Which team has faster Pokémon on average
-            2. **Type Advantage**: Overall type matchups between teams
-            3. **Win Conditions**: How each team plans to win
-            """)
-            
-            # Calculate basic comparison metrics
-            team_a_df = df[df['Team'] == team_a]
-            team_b_df = df[df['Team'] == team_b]
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Avg Speed", 
-                         f"{team_a_df['Speed'].mean():.1f} vs {team_b_df['Speed'].mean():.1f}",
-                         delta=f"{(team_a_df['Speed'].mean() - team_b_df['Speed'].mean()):.1f}")
-            with col2:
-                st.metric("Total Attack", 
-                         f"{(team_a_df['Attack'].sum() + team_a_df['Sp. Atk'].sum()):.1f} vs {(team_b_df['Attack'].sum() + team_b_df['Sp. Atk'].sum()):.1f}")
-            with col3:
-                st.metric("Total Bulk", 
-                         f"{(team_a_df['HP'].sum() + team_a_df['Defense'].sum() + team_a_df['Sp. Def'].sum()):.1f} vs {(team_b_df['HP'].sum() + team_b_df['Defense'].sum() + team_b_df['Sp. Def'].sum()):.1f}")
-            
-            st.subheader("Suggested Strategy")
-            st.write("""
-            - Focus on eliminating opponent's key threats first
-            - Protect your win condition Pokémon
-            - Use your speed advantage to control the tempo
-            """)
-    
-    # [Rest of your existing tab implementations...]
+        # Team archetypes
+        st.subheader("Popular Team Archetypes")
+        team_counts = df['Team'].value_counts().head(10).reset_index()
+        team_counts.columns = ['Team', 'Count']
+        fig = px.pie(team_counts, values='Count', names='Team',
+                    title="Most Common Team Archetypes")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Meta threats
+        st.subheader("Top Meta Threats")
+        top_threats = df['Pokemon'].value_counts().head(5).index.tolist()
+        for i, threat in enumerate(top_threats, 1):
+            st.write(f"{i}. {threat}")
+        
+        # Counter recommendations
+        st.subheader("Anti-Meta Recommendations")
+        st.write("Consider these Pokémon to counter the current meta:")
+        st.write("- Toxapex (bulky wall)")
+        st.write("- Ferrothorn (hazard setter)")
+        st.write("- Clefable (Fairy type with great utility)")
 
 if __name__ == "__main__":
     main()
