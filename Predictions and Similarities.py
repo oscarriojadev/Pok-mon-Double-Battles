@@ -359,7 +359,13 @@ def analyze_usage_trends(df):
     usage = usage.merge(stats, on='Pokemon')
     
     # Calculate usage tier (top 10%, 20%, etc.)
-    usage['UsageTier'] = pd.qcut(usage['UsageCount'], q=4, labels=['Low', 'Medium', 'High', 'Very High'])
+    # Add duplicates='drop' to handle duplicate edges
+    try:
+        usage['UsageTier'] = pd.qcut(usage['UsageCount'], q=4, labels=['Low', 'Medium', 'High', 'Very High'], duplicates='drop')
+    except ValueError:
+        # If there aren't enough unique values, use simple ranking
+        usage['UsageTier'] = pd.cut(usage['UsageCount'], bins=4, labels=['Low', 'Medium', 'High', 'Very High'])
+    
     return usage.sort_values('UsageCount', ascending=False)
 
 def main():
