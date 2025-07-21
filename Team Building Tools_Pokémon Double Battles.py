@@ -167,9 +167,115 @@ def main():
         "📈 Meta Analysis"
     ])
     
-    # [Previous tab implementations...]
+    # 1. Team Overview Tab
+    with tabs[0]:
+        st.header("🏆 Team Overview Dashboard")
+        
+        selected_team = st.selectbox("Select Team", sorted(df['Team'].unique()), key='overview_team')
+        team_df = df[df['Team'] == selected_team]
+        
+        if not team_df.empty:
+            # Key Metrics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Team Size", len(team_df))
+            with col2:
+                st.metric("Avg Speed", f"{team_df['Speed'].mean():.1f}")
+            with col3:
+                st.metric("Offensive Power", f"{(team_df['Attack'].mean() + team_df['Sp. Atk'].mean())/2:.1f}")
+            with col4:
+                st.metric("Defensive Bulk", f"{(team_df['HP'].mean() + team_df['Defense'].mean() + team_df['Sp. Def'].mean())/3:.1f}")
+            
+            # Team Composition Pie Charts
+            st.subheader("Team Composition")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                # Type Distribution
+                type_counts = team_df['Type'].value_counts()
+                if not type_counts.empty:
+                    fig = px.pie(type_counts, names=type_counts.index, values=type_counts.values,
+                                title="Type Distribution")
+                    st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                # Role Distribution
+                role_counts = team_df['PrimaryRole'].value_counts()
+                if not role_counts.empty:
+                    fig = px.pie(role_counts, names=role_counts.index, values=role_counts.values,
+                                title="Role Distribution")
+                    st.plotly_chart(fig, use_container_width=True)
+            
+            # Team Stats Radar Chart
+            st.subheader("Team Stats Profile")
+            stats = ['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']
+            avg_stats = team_df[stats].mean()
+            fig = go.Figure()
+            fig.add_trace(go.Scatterpolar(
+                r=avg_stats.values,
+                theta=stats,
+                fill='toself',
+                name='Average Stats'
+            ))
+            fig.update_layout(
+                polar=dict(radialaxis=dict(visible=True)),
+                showlegend=False,
+                height=400
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Team Members Table
+            st.subheader("Team Members")
+            st.dataframe(team_df[['Pokemon', 'Type', 'PrimaryRole', 'SecondaryRole'] + stats])
     
-    with tabs[2]:  # Team Comparison
+    # 2. Pokémon Analysis Tab
+    with tabs[1]:
+        st.header("🔍 Individual Pokémon Analysis")
+        
+        # Pokémon Selector
+        selected_pokemon = st.selectbox("Select Pokémon", sorted(df['Pokemon'].unique()))
+        pokemon_data = df[df['Pokemon'] == selected_pokemon].iloc[0]
+        
+        # Basic Info
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            st.subheader(selected_pokemon)
+            st.write(f"**Type:** {pokemon_data['Type']}")
+            st.write(f"**Primary Role:** {pokemon_data['PrimaryRole']}")
+            st.write(f"**Secondary Role:** {pokemon_data['SecondaryRole']}")
+        
+        with col2:
+            # Stats Bar Chart
+            stats = ['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']
+            fig = px.bar(pokemon_data[stats], orientation='h',
+                        title="Base Stats", labels={'value': 'Stat Value', 'index': 'Stat'})
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Moves and Counters
+        st.subheader("Strategic Information")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("**Common Moves:**")
+            if pd.notna(pokemon_data.get('Moves')):
+                moves = pokemon_data['Moves'].split(',')
+                for move in moves:
+                    st.write(f"- {move.strip()}")
+        
+        with col2:
+            st.write("**Common Counters:**")
+            if pd.notna(pokemon_data.get('Counters')):
+                counters = pokemon_data['Counters'].split(',')
+                for counter in counters:
+                    st.write(f"- {counter.strip()}")
+        
+        # Performance by Game Phase
+        st.subheader("Performance by Game Phase")
+        phases = ['Early Game', 'Mid Game', 'Late Game']
+        phase_perf = {phase: pokemon_data.get(phase, '') for phase in phases}
+        st.write(pd.DataFrame.from_dict(phase_perf, orient='index', columns=['Performance']))
+    
+    # 3. Team Comparison Tab
+    with tabs[2]:
         st.header("📊 Team Comparison Analysis")
         
         # Select teams to compare
@@ -231,7 +337,8 @@ def main():
         else:
             st.warning("Please select at least 2 teams to compare")
     
-    with tabs[3]:  # ML Recommendations
+    # 4. ML Recommendations Tab
+    with tabs[3]:
         st.header("🤖 Machine Learning Recommendations")
         selected_team = st.selectbox("Select team for recommendations", sorted(df['Team'].unique()))
         
@@ -259,7 +366,73 @@ def main():
                 else:
                     st.warning("Could not generate recommendations - not enough data")
     
-    with tabs[5]:  # Team Synergy
+    # 5. Type Coverage Tab
+    with tabs[4]:
+        st.header("🛡️ Team Type Coverage Analysis")
+        
+        selected_team = st.selectbox("Select Team", sorted(df['Team'].unique()), key='type_team')
+        team_df = df[df['Team'] == selected_team]
+        
+        if not team_df.empty:
+            # Type Distribution
+            st.subheader("Type Distribution")
+            type_counts = analyze_type_coverage(team_df)
+            if type_counts is not None:
+                fig = px.bar(type_counts, x='Type', y='Count', color='Type',
+                            title="Type Distribution on Team")
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Type Effectiveness Analysis
+            st.subheader("Type Effectiveness")
+            
+            # Get all types on team
+            team_types = set()
+            for types in team_df['Type']:
+                for t in str(types).split('/'):
+                    if t and t != 'Unknown':
+                        team_types.add(t.strip())
+            
+            # Calculate coverage
+            coverage = defaultdict(int)
+            weaknesses = defaultdict(int)
+            
+            for t in team_types:
+                if t in TYPE_EFFECTIVENESS:
+                    for strong_against in TYPE_EFFECTIVENESS[t]['Strong']:
+                        coverage[strong_against] += 1
+                    for weak_against in TYPE_EFFECTIVENESS[t]['Weak']:
+                        weaknesses[weak_against] += 1
+            
+            # Display coverage
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write("**Offensive Coverage**")
+                coverage_df = pd.DataFrame(sorted(coverage.items(), key=lambda x: -x[1]),
+                                        columns=['Type', 'Coverage'])
+                st.dataframe(coverage_df.style.highlight_max(axis=0, color='lightgreen'))
+            
+            with col2:
+                st.write("**Defensive Weaknesses**")
+                weaknesses_df = pd.DataFrame(sorted(weaknesses.items(), key=lambda x: -x[1]),
+                                        columns=['Type', 'Weaknesses'])
+                st.dataframe(weaknesses_df.style.highlight_max(axis=0, color='lightpink'))
+            
+            # Recommendations
+            st.subheader("Type Coverage Recommendations")
+            if coverage:
+                poorly_covered = [t for t in TYPE_EFFECTIVENESS.keys() if t not in coverage or coverage[t] < 2]
+                if poorly_covered:
+                    st.warning(f"Consider adding coverage for: {', '.join(poorly_covered[:3])}")
+                else:
+                    st.success("Your team has excellent type coverage!")
+            
+            if weaknesses:
+                common_weaknesses = [t for t, count in weaknesses.items() if count > 2]
+                if common_weaknesses:
+                    st.warning(f"Watch out for common weaknesses to: {', '.join(common_weaknesses)}")
+    
+    # 6. Team Synergy Tab
+    with tabs[5]:
         st.header("🔄 Team Synergy Analysis")
         selected_team = st.selectbox("Select Team", sorted(df['Team'].unique()), key='synergy_team')
         team_df = df[df['Team'] == selected_team]
@@ -325,7 +498,8 @@ def main():
                          f"Score: {worst_score:.2f}")
                 st.write(f"Consider adjusting their roles or replacing one to improve team balance.")
     
-    with tabs[6]:  # Team Matchup
+    # 7. Team Matchup Tab
+    with tabs[6]:
         st.header("⚔️ Team Matchup Simulator")
         
         col1, col2 = st.columns(2)
@@ -414,6 +588,131 @@ def main():
             st.write("- " + "\n- ".join(team_a_df.sort_values('Defense', ascending=False)['Pokemon'].head(3).tolist()))
         elif team_a == team_b:
             st.warning("Please select two different teams to compare")
+    
+    # 8. Enhanced Team Building Tab
+    with tabs[7]:
+        st.header("🧩 Enhanced Team Building Tools")
+        
+        tab1, tab2, tab3 = st.tabs(["Team Builder", "Role Checker", "Core Generator"])
+        
+        with tab1:
+            st.subheader("Interactive Team Builder")
+            
+            # Team slots
+            team = []
+            cols = st.columns(4)
+            for i in range(6):
+                with cols[i%4]:
+                    pokemon = st.selectbox(f"Slot {i+1}", [""] + sorted(df['Pokemon'].unique()),
+                                         key=f"team_slot_{i}")
+                    if pokemon:
+                        team.append(pokemon)
+            
+            if team:
+                st.subheader("Current Team Analysis")
+                team_df = df[df['Pokemon'].isin(team)].drop_duplicates('Pokemon')
+                
+                # Quick stats
+                st.write(f"Team Size: {len(team_df)}")
+                st.write(f"Unique Types: {team_df['Type'].nunique()}")
+                
+                # Visual builder
+                st.write("**Team Visualization**")
+                fig = px.treemap(team_df, path=['Type', 'Pokemon'],
+                                color='PrimaryRole', hover_data=['HP', 'Attack', 'Speed'])
+                st.plotly_chart(fig, use_container_width=True)
+        
+        with tab2:
+            st.subheader("Role Composition Checker")
+            st.write("Ensure your team has all necessary roles")
+            
+            roles = ['Physical Attacker', 'Special Attacker', 'Tank', 'Support', 'Hazard Setter', 'Speed Control']
+            selected_roles = st.multiselect("Select desired roles", roles, default=roles[:4])
+            
+            if selected_roles:
+                team = st.selectbox("Select team to analyze", sorted(df['Team'].unique()))
+                team_df = df[df['Team'] == team]
+                
+                role_counts = team_df['PrimaryRole'].value_counts()
+                missing_roles = [role for role in selected_roles if role not in role_counts.index]
+                
+                if missing_roles:
+                    st.error(f"Missing roles: {', '.join(missing_roles)}")
+                else:
+                    st.success("All selected roles are covered!")
+                    
+                fig = px.bar(role_counts, title="Role Distribution")
+                st.plotly_chart(fig, use_container_width=True)
+        
+        with tab3:
+            st.subheader("Core Generator")
+            st.write("Generate strong Pokémon cores for your team")
+            
+            core_type = st.radio("Core Type", ["Offensive", "Defensive", "Balanced"])
+            num_cores = st.slider("Number of cores to generate", 1, 5, 3)
+            
+            if st.button("Generate Cores"):
+                # Simple core generation logic (would use ML in production)
+                if core_type == "Offensive":
+                    candidates = df.sort_values(['Attack', 'Sp. Atk', 'Speed'], ascending=False)
+                elif core_type == "Defensive":
+                    candidates = df.sort_values(['HP', 'Defense', 'Sp. Def'], ascending=False)
+                else:
+                    candidates = df.sort_values(['Attack', 'Defense', 'Sp. Atk', 'Sp. Def'], ascending=False)
+                
+                cores = []
+                for i in range(num_cores):
+                    core = candidates.iloc[i*2:(i*2)+2]['Pokemon'].tolist()
+                    cores.append(f"{core[0]} + {core[1]}")
+                
+                st.write("Recommended cores:")
+                for core in cores:
+                    st.write(f"- {core}")
+    
+    # 9. Meta Analysis Tab
+    with tabs[8]:
+        st.header("📈 Meta Game Analysis")
+        
+        tab1, tab2 = st.tabs(["Usage Statistics", "Trend Analysis"])
+        
+        with tab1:
+            st.subheader("Pokémon Usage Statistics")
+            
+            # Calculate usage (assuming multiple teams in dataset)
+            usage = df['Pokemon'].value_counts().reset_index()
+            usage.columns = ['Pokemon', 'Usage Count']
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write("Top 10 Most Used Pokémon")
+                st.dataframe(usage.head(10))
+            
+            with col2:
+                fig = px.bar(usage.head(10), x='Pokemon', y='Usage Count',
+                            title="Top 10 Pokémon")
+                st.plotly_chart(fig, use_container_width=True)
+        
+        with tab2:
+            st.subheader("Meta Trends")
+            
+            # Role distribution
+            st.write("Role Distribution in Current Meta")
+            role_dist = df['PrimaryRole'].value_counts()
+            if not role_dist.empty:
+                fig = px.pie(role_dist, names=role_dist.index, values=role_dist.values)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Type distribution
+            st.write("Type Distribution in Current Meta")
+            type_list = []
+            for types in df['Type']:
+                for t in str(types).split('/'):
+                    if t and t != 'Unknown':
+                        type_list.append(t.strip())
+            
+            type_dist = pd.Series(type_list).value_counts()
+            fig = px.bar(type_dist, title="Type Popularity")
+            st.plotly_chart(fig, use_container_width=True)
 
 if __name__ == "__main__":
     main()
