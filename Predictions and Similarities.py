@@ -5,11 +5,10 @@ import plotly.express as px
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import KMeans
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestRegressor  # Changed from Classifier to Regressor
 from sklearn.model_selection import train_test_split
 import plotly.graph_objects as go
 from collections import defaultdict
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor  # Add Regressor
 
 # Complete type effectiveness chart
 TYPE_CHART = {
@@ -132,7 +131,6 @@ def load_data(uploaded_file):
         return pd.read_csv(uploaded_file)
     return None
 
-# Fixed machine learning similarity function
 def calculate_pokemon_similarity(df, selected_pokemon):
     stats = ['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed']
     
@@ -183,7 +181,6 @@ def calculate_team_similarity(df, selected_team):
     team_stats['Similarity'] = similarities
     return team_stats.sort_values('Similarity', ascending=False)
 
-# Radar chart function
 def create_radar_chart(df, team_name):
     team_df = df[df['Team'] == team_name]
     if team_df.empty:
@@ -248,7 +245,6 @@ def calculate_team_coverage(team_types):
         'excellent_coverage': sorted(excellent_coverage)
     }
 
-# New ML functions for predictive analytics
 def predict_team_success(df):
     """Predict team success rate based on historical data"""
     # Feature engineering
@@ -271,17 +267,18 @@ def predict_team_success(df):
     np.random.seed(42)
     features['WinRate'] = np.random.uniform(0.4, 0.9, len(features))
     
-    # Train a model - CHANGED TO REGRESSOR
-    X = features.select_dtypes(include=[np.number]).drop('WinRate', axis=1, errors='ignore')
+    # Select only numeric columns for modeling
+    numeric_cols = features.select_dtypes(include=[np.number]).columns.tolist()
+    X = features[numeric_cols].drop('WinRate', axis=1, errors='ignore')
     y = features['WinRate']
     
     if len(X) > 1:
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        model = RandomForestRegressor(n_estimators=100, random_state=42)  # Changed to Regressor
+        model = RandomForestRegressor(n_estimators=100, random_state=42)
         model.fit(X_train, y_train)
         
         # Predict for all teams
-        features['PredictedWinRate'] = model.predict(X)  # Changed from predict_proba to predict
+        features['PredictedWinRate'] = model.predict(X)
         return features.sort_values('PredictedWinRate', ascending=False)
     return features.sort_values('WinRate', ascending=False)
 
@@ -333,9 +330,12 @@ def cluster_teams_by_playstyle(df):
         'MetaScore': 'mean'
     }).reset_index()
     
+    # Select only numeric columns for clustering
+    numeric_cols = team_features.select_dtypes(include=[np.number]).columns.tolist()
+    X = team_features[numeric_cols]
+    
     # Standardize features
     scaler = StandardScaler()
-    X = team_features.select_dtypes(include=[np.number])
     X_scaled = scaler.fit_transform(X)
     
     # Determine optimal number of clusters
@@ -344,8 +344,8 @@ def cluster_teams_by_playstyle(df):
         kmeans = KMeans(n_clusters=k, random_state=42)
         team_features['PlaystyleCluster'] = kmeans.fit_predict(X_scaled)
         
-        # Analyze cluster characteristics
-        cluster_profiles = team_features.groupby('PlaystyleCluster').mean()
+        # Analyze cluster characteristics (numeric columns only)
+        cluster_profiles = team_features.groupby('PlaystyleCluster')[numeric_cols].mean()
         return team_features, cluster_profiles
     return team_features, None
 
@@ -362,7 +362,6 @@ def analyze_usage_trends(df):
     usage['UsageTier'] = pd.qcut(usage['UsageCount'], q=4, labels=['Low', 'Medium', 'High', 'Very High'])
     return usage.sort_values('UsageCount', ascending=False)
 
-# Main app
 def main():
     st.set_page_config(layout="wide", page_title="Pokémon Team Analyzer")
     
