@@ -258,7 +258,7 @@ def create_battle_flow_diagram(team_df):
         nodes.append(dict(
             label="Early Game",
             description=phases['Early Game'],
-            shape="box",
+            shape="square",  # Changed from "box" to "square"
             style="filled",
             fillcolor="#FFD700"  # Gold
         ))
@@ -267,7 +267,7 @@ def create_battle_flow_diagram(team_df):
         nodes.append(dict(
             label="Mid Game",
             description=phases['Mid Game'],
-            shape="box",
+            shape="square",  # Changed from "box" to "square"
             style="filled",
             fillcolor="#FFA500"  # Orange
         ))
@@ -278,7 +278,7 @@ def create_battle_flow_diagram(team_df):
         nodes.append(dict(
             label="Late Game",
             description=phases['Late Game'],
-            shape="box",
+            shape="square",  # Changed from "box" to "square"
             style="filled",
             fillcolor="#FF6347"  # Tomato
         ))
@@ -308,7 +308,8 @@ def create_battle_flow_diagram(team_df):
             marker=dict(
                 size=40,
                 color=node['fillcolor'],
-                symbol=node['shape']
+                symbol=node['shape'],  # Now using valid symbol "square" or "diamond"
+                line=dict(width=2, color='black')
             ),
             text=node['label'],
             textposition="middle center",
