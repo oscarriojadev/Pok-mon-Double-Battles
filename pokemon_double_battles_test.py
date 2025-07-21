@@ -917,69 +917,148 @@ def main():
             st.warning("No data available for selected team")
 
     with tab6:
-        st.header("Team Synergy Analysis")
-        selected_team = st.selectbox("Select Team", sorted(df['Team'].unique()), key='synergy_team')
+    st.header("Team Synergy Analysis")
+    selected_team = st.selectbox("Select Team", sorted(df['Team'].unique()), key='synergy_team')
+    
+    synergy_data = analyze_team_synergy(df, selected_team)
+    if synergy_data:
+        team_df = synergy_data['team_df']
         
-        synergy_data = analyze_team_synergy(df, selected_team)
-        if synergy_data:
-            st.subheader("Mitigation Strategies")
+        # Display team composition overview
+        st.subheader("🧩 Team Composition")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Role distribution pie chart
+            role_dist = team_df['PrimaryRole'].value_counts().reset_index()
+            fig = px.pie(role_dist, names='PrimaryRole', values='count', 
+                         title='Primary Role Distribution')
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            # Show all team members with roles
+            st.write("**Team Members:**")
+            for _, row in team_df.iterrows():
+                role_info = f"{row['Pokemon']} ({row['PrimaryRole']}"
+                if pd.notna(row['SecondaryRole']) and row['SecondaryRole'] != '':
+                    role_info += f" / {row['SecondaryRole']}"
+                st.write(f"- {role_info}")
+        
+        st.divider()
+        
+        # Enhanced Role Analysis
+        st.subheader("🎯 Role-Specific Analysis")
+        
+        # Define expected moves/abilities for each role
+        ROLE_EXPECTATIONS = {
+            'Sweeper': ['Swords Dance', 'Nasty Plot', 'Dragon Dance', 'Bulk Up'],
+            'Wallbreaker': ['Choice Band', 'Choice Specs', 'Life Orb'],
+            'Support': ['Tailwind', 'Helping Hand', 'Light Screen', 'Reflect'],
+            'Tank': ['Recover', 'Protect', 'Iron Defense', 'Amnesia'],
+            'Disruptor': ['Taunt', 'Encore', 'Will-O-Wisp', 'Thunder Wave']
+        }
+        
+        for role in team_df['PrimaryRole'].unique():
+            role_pokemon = team_df[team_df['PrimaryRole'] == role]
+            st.write(f"#### {role} Role Analysis")
             
-            # Items that mitigate weaknesses
-            if synergy_data['mitigation']['item_mitigations']:
-                st.write("### 🧰 Item Mitigations")
-                for weakness, pokemon_list in synergy_data['mitigation']['item_mitigations'].items():
-                    st.write(f"**{weakness} attacks mitigated by:**")
-                    for item in pokemon_list:
-                        st.write(f"- {item}")
-            
-            # Abilities that mitigate weaknesses
-            if synergy_data['mitigation']['ability_mitigations']:
-                st.write("### 🔮 Ability Mitigations")
-                for weakness, pokemon_list in synergy_data['mitigation']['ability_mitigations'].items():
-                    st.write(f"**{weakness} attacks mitigated by:**")
-                    for ability in pokemon_list:
-                        st.write(f"- {ability}")
-            
-            # Natures that enhance stats
-            if synergy_data['mitigation']['nature_mitigations']:
-                st.write("### 🌿 Nature Enhancements")
-                for stat, pokemon_list in synergy_data['mitigation']['nature_mitigations'].items():
-                    st.write(f"**Pokemon with {stat} nature:**")
-                    for pokemon in pokemon_list:
-                        st.write(f"- {pokemon}")
-            
-            # Move-based mitigations
-            if synergy_data['mitigation']['move_mitigations']:
-                st.write("### 🎯 Move-based Strategies")
-                for category, pokemon_list in synergy_data['mitigation']['move_mitigations'].items():
-                    st.write(f"**{category} moves:**")
-                    for move in pokemon_list:
-                        st.write(f"- {move}")
-            
-            st.divider()
-            
-            # Move synergy analysis
-            move_synergy = analyze_move_synergy(synergy_data['team_df'])
-            
-            st.subheader("Move Alignment with Roles")
-            if move_synergy['role_move_synergy']:
-                for category, moves in move_synergy['role_move_synergy'].items():
-                    st.write(f"**{category}:**")
-                    for move in moves:
-                        st.write(f"- {move}")
-            else:
-                st.warning("No notable move-role synergies found")
-            
-            st.divider()
-            
-            st.subheader("Win Condition Contributions")
-            if move_synergy['win_condition_contributions']:
-                for condition, contributors in move_synergy['win_condition_contributions'].items():
-                    st.write(f"**{condition} win condition contributors:**")
-                    for pokemon in contributors:
-                        st.write(f"- {pokemon}")
-            else:
-                st.warning("No clear win condition contributions identified")
+            for _, pokemon in role_pokemon.iterrows():
+                # Check for expected moves/items
+                missing_components = []
+                moves = [pokemon[f'Move {i}'] for i in range(1,5)]
+                
+                if role in ROLE_EXPECTATIONS:
+                    for expected in ROLE_EXPECTATIONS[role]:
+                        if expected not in ' '.join(str(m) for m in moves) and expected not in str(pokemon['Item']):
+                            missing_components.append(expected)
+                
+                # Display Pokémon info
+                if missing_components:
+                    st.warning(f"{pokemon['Pokemon']} is missing common {role} elements: {', '.join(missing_components)}")
+                else:
+                    st.success(f"{pokemon['Pokemon']} has good {role} setup")
+                
+                # Show key moves
+                st.write(f"**Key Moves:** {', '.join([m for m in moves if pd.notna(m)])}")
+                st.write(f"**Item:** {pokemon['Item']}")
+                st.write(f"**Ability:** {pokemon['Ability']}")
+                st.write("---")
+        
+        st.divider()
+        
+        # Enhanced Win Condition Analysis
+        st.subheader("🏆 Win Condition Analysis")
+        
+        # Get unique win conditions (some teams might have multiple)
+        win_conditions = team_df['Win Condition'].dropna().unique()
+        
+        if len(win_conditions) > 0:
+            for wc in win_conditions:
+                st.write(f"#### Win Condition: {wc}")
+                
+                # Find Pokémon that directly contribute
+                contributors = []
+                for _, pokemon in team_df.iterrows():
+                    moves = [pokemon[f'Move {i}'] for i in range(1,5)]
+                    if any(keyword in ' '.join(str(m) for m in moves) for keyword in wc.split()) or \
+                       any(keyword in str(pokemon['Ability']) for keyword in wc.split()):
+                        contributors.append(pokemon['Pokemon'])
+                
+                if contributors:
+                    st.success(f"Primary Contributors: {', '.join(contributors)}")
+                else:
+                    st.warning("No clear contributors identified - check team strategy")
+                
+                # Show execution phases
+                st.write("**Execution Phases:**")
+                try:
+                    phases = {
+                        'Early Game': team_df['Early Game'].iloc[0],
+                        'Mid Game': team_df['Mid Game'].iloc[0],
+                        'Late Game': team_df['Late Game'].iloc[0]
+                    }
+                    for phase, desc in phases.items():
+                        if pd.notna(desc):
+                            st.write(f"- **{phase}:** {desc}")
+                except:
+                    st.warning("Phase information not available")
+        
+        else:
+            st.warning("No explicit win condition defined for this team")
+        
+        st.divider()
+        
+        # Move Synergy Analysis (existing code)
+        st.subheader("🔄 Move Synergy")
+        move_synergy = analyze_move_synergy(team_df)
+        
+        if move_synergy['role_move_synergy']:
+            for category, moves in move_synergy['role_move_synergy'].items():
+                st.write(f"**{category}:**")
+                for move in moves:
+                    st.write(f"- {move}")
+        else:
+            st.warning("No notable move-role synergies found")
+        
+        st.divider()
+        
+        # Setup Move Tracking
+        st.subheader("📈 Setup Moves")
+        setup_moves = ['Swords Dance', 'Nasty Plot', 'Bulk Up', 'Calm Mind', 'Dragon Dance']
+        setup_users = []
+        
+        for _, pokemon in team_df.iterrows():
+            moves = [pokemon[f'Move {i}'] for i in range(1,5)]
+            for move in moves:
+                if any(sm in str(move) for sm in setup_moves):
+                    setup_users.append(f"{pokemon['Pokemon']} ({move})")
+        
+        if setup_users:
+            st.success("Setup Move Users:")
+            for user in setup_users:
+                st.write(f"- {user}")
+        else:
+            st.warning("No setup moves detected - team may lack sweeping potential")
 
     with tab7:
         st.header("Team Matchup Analysis")
