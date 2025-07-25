@@ -47,8 +47,10 @@ def load_data(uploaded_file) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFr
                 data[col] = data[col].fillna(0)
         
         numeric_cols = [
-            'Format Viability', 'Pivot Synergy Rating (1-20)',
-            'Bulk Score', 'Damage Output Score', 'Meta Usage (%)'
+            col for col in [
+                'Format Viability', 'Pivot Synergy Rating (1-20)',
+                'Bulk Score', 'Damage Output Score', 'Meta Usage (%)'
+            ] if col in data.columns
         ]
         
         for col in numeric_cols:
@@ -159,44 +161,61 @@ def main():
         st.info("Please upload a file to begin analysis.")
         return
     
+    # Debug: Show available columns
+    if st.checkbox("Show data columns (debug)"):
+        st.write("Individual Pokémon data columns:", data.columns.tolist())
+        st.write("Team data columns:", team_data.columns.tolist())
+    
     # Sidebar Filters
     st.sidebar.header("Team Filters")
     
     # Archetype filter
-    archetypes = team_data['Archetype Suitability'].unique()
+    archetypes = team_data['Archetype Suitability'].unique() if 'Archetype Suitability' in team_data.columns else []
     selected_archetypes = st.sidebar.multiselect(
         "Team Archetypes",
         archetypes,
         default=archetypes,
         help="Filter teams by their strategic archetype"
-    )
+    ) if len(archetypes) > 0 else []
     
-    # Metric filters
+    # Metric filters with existence checks
     min_viability = st.sidebar.slider(
         "Minimum Format Viability",
         0, 100, 50,
         help="Filter by team viability score"
-    )
+    ) if 'Format Viability' in team_data.columns else 0
     
     min_bulk = st.sidebar.slider(
         "Minimum Bulk Score",
         0, 100, 50,
         help="Filter by team defensive bulk"
-    )
+    ) if 'Bulk Score' in team_data.columns else 0
     
     min_damage = st.sidebar.slider(
         "Minimum Damage Output",
         0, 100, 50,
         help="Filter by team offensive power"
-    )
+    ) if 'Damage Output Score' in team_data.columns else 0
     
     # Apply filters
-    filtered_teams = team_data[
-        (team_data['Archetype Suitability'].isin(selected_archetypes)) &
-        (team_data['Format Viability'] >= min_viability) &
-        (team_data['Bulk Score'] >= min_bulk) &
-        (team_data['Damage Output Score'] >= min_damage)
-    ]
+    filter_conditions = []
+    
+    if len(selected_archetypes) > 0 and 'Archetype Suitability' in team_data.columns:
+        filter_conditions.append(team_data['Archetype Suitability'].isin(selected_archetypes))
+    
+    if 'Format Viability' in team_data.columns:
+        filter_conditions.append(team_data['Format Viability'] >= min_viability)
+    
+    if 'Bulk Score' in team_data.columns:
+        filter_conditions.append(team_data['Bulk Score'] >= min_bulk)
+    
+    if 'Damage Output Score' in team_data.columns:
+        filter_conditions.append(team_data['Damage Output Score'] >= min_damage)
+    
+    if filter_conditions:
+        filtered_teams = team_data[pd.concat(filter_conditions, axis=1).all(axis=1)]
+    else:
+        filtered_teams = team_data
     
     # Main Content
     st.header("Recommended Teams")
@@ -212,17 +231,23 @@ def main():
                     # Team Metrics
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.metric("Viability", f"{row['Format Viability']:.1f}")
-                        st.metric("Bulk", f"{row['Bulk Score']:.1f}")
+                        if 'Format Viability' in row:
+                            st.metric("Viability", f"{row['Format Viability']:.1f}")
+                        if 'Bulk Score' in row:
+                            st.metric("Bulk", f"{row['Bulk Score']:.1f}")
                     with col2:
-                        st.metric("Damage", f"{row['Damage Output Score']:.1f}")
-                        st.metric("Synergy", f"{row['Pivot Synergy Rating (1-20)']:.1f}/20")
+                        if 'Damage Output Score' in row:
+                            st.metric("Damage", f"{row['Damage Output Score']:.1f}")
+                        if 'Pivot Synergy Rating (1-20)' in row:
+                            st.metric("Synergy", f"{row['Pivot Synergy Rating (1-20)']:.1f}/20")
+                        else:
+                            st.metric("Synergy", "N/A")
                     
                     # Team Members
                     st.subheader("Team Members")
                     for i, (pokemon, role) in enumerate(zip(row['Pokemon'], row['Role'])):
-                        type1 = row['Typing (Primary)'][i] if i < len(row['Typing (Primary)']) else "?"
-                        type2 = row['Typing (Secondary)'][i] if i < len(row['Typing (Secondary)']) else None
+                        type1 = row['Typing (Primary)'][i] if 'Typing (Primary)' in row and i < len(row['Typing (Primary)']) else "?"
+                        type2 = row['Typing (Secondary)'][i] if 'Typing (Secondary)' in row and i < len(row['Typing (Secondary)']) else None
                         
                         type_display = f"{type1}{f'/{type2}' if type2 else ''}"
                         st.markdown(f"""
@@ -259,16 +284,19 @@ def main():
             team1_data = filtered_teams[filtered_teams['Team Name'] == team1].iloc[0]
             team2_data = filtered_teams[filtered_teams['Team Name'] == team2].iloc[0]
             
-            metrics = [
+            available_metrics = [
                 'Format Viability', 'Bulk Score',
                 'Damage Output Score', 'Pivot Synergy Rating (1-20)'
             ]
-            metrics = [m for m in metrics if m in filtered_teams.columns]
+            metrics = [m for m in available_metrics if m in filtered_teams.columns and m in team1_data and m in team2_data]
             
-            st.plotly_chart(
-                plot_team_comparison(team1_data, team2_data, metrics),
-                use_container_width=True
-            )
+            if not metrics:
+                st.warning("No comparable metrics available for these teams.")
+            else:
+                st.plotly_chart(
+                    plot_team_comparison(team1_data, team2_data, metrics),
+                    use_container_width=True
+                )
         
         # Type Coverage Analysis
         st.header("Type Coverage Analysis")
