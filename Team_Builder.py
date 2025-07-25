@@ -2,83 +2,83 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-from io import StringIO
-
 @st.cache_data
 def load_data(uploaded_file):
     if uploaded_file is not None:
         try:
-            # Read file content
-            content = uploaded_file.getvalue().decode('utf-8')
+            # Read file directly with pandas
+            data = pd.read_csv(uploaded_file, sep='\t')  # First try tab-separated
             
-            # First try tab separator
-            try:
-                data = pd.read_csv(StringIO(content), sep='\t')
-            except:
-                # Then try comma separator
-                data = pd.read_csv(StringIO(content))
+            # If that fails (only got 1 column), try comma-separated
+            if len(data.columns) == 1:
+                uploaded_file.seek(0)  # Reset file pointer
+                data = pd.read_csv(uploaded_file)  # Try comma-separated
             
             # Clean column names
-            data.columns = data.columns.str.strip().str.replace('"', '')
+            data.columns = data.columns.str.strip().str.replace('"', '').str.replace('  ', ' ')
             
-            # Convert numeric columns
-            numeric_cols = [
-                'Pivot Synergy Rating (1-20)',
-                'Bulk Score', 
-                'Damage Output Score',
-                'Meta Usage (%)'
-            ]
+            # Debug: show what columns were found
+            st.write("Columns detected:", list(data.columns))
             
-            for col in numeric_cols:
-                if col in data.columns:
-                    # Special handling for percentage column
-                    if col == 'Meta Usage (%)':
-                        data[col] = data[col].astype(str).str.replace('%', '')
-                    # Convert to numeric, coercing errors to NaN
-                    data[col] = pd.to_numeric(data[col], errors='coerce')
-            
-            # Verify required columns
-            required_cols = ['Team Number', 'Team Name', 'Pokemon', 'Role']
-            missing_cols = [col for col in required_cols if col not in data.columns]
-            if missing_cols:
-                st.error(f"Missing required columns: {missing_cols}")
-                return None, None
-            
-            # Define aggregation rules
-            agg_dict = {
-                'Team Name': 'first',
-                'Pokemon': list,
-                'Role': list
+            # Try to find required columns with flexible matching
+            column_map = {
+                'Team Number': next((c for c in data.columns if 'team' in c.lower() and 'number' in c.lower()), None),
+                'Team Name': next((c for c in data.columns if 'team' in c.lower() and 'name' in c.lower()), None),
+                'Pokemon': next((c for c in data.columns if 'pokemon' in c.lower()), None),
+                'Role': next((c for c in data.columns if 'role' in c.lower() and not '(' in c.lower()), None)
             }
             
-            # Add numeric aggregations only for numeric columns
-            numeric_aggs = {
+            # Check if we found all required columns
+            missing_cols = [name for name, col in column_map.items() if col is None]
+            if missing_cols:
+                st.error(f"Could not find these required columns: {missing_cols}")
+                st.error("Please check your file and ensure it contains these columns")
+                return None, None
+            
+            # Rename columns to standard names
+            data = data.rename(columns={v:k for k,v in column_map.items() if v is not None})
+            
+            # Convert numeric columns
+            numeric_cols = {
                 'Pivot Synergy Rating (1-20)': 'mean',
                 'Bulk Score': 'mean',
                 'Damage Output Score': 'mean',
                 'Meta Usage (%)': 'mean'
             }
             
-            for col, agg_func in numeric_aggs.items():
+            for col in numeric_cols:
+                if col in data.columns:
+                    # Handle percentage column
+                    if col == 'Meta Usage (%)':
+                        data[col] = data[col].astype(str).str.replace('%', '')
+                    # Convert to numeric
+                    data[col] = pd.to_numeric(data[col], errors='coerce')
+            
+            # Define aggregation
+            agg_dict = {
+                'Team Name': 'first',
+                'Pokemon': list,
+                'Role': list
+            }
+            
+            # Add numeric aggregations
+            for col, agg_func in numeric_cols.items():
                 if col in data.columns and pd.api.types.is_numeric_dtype(data[col]):
                     agg_dict[col] = agg_func
             
             # Add non-numeric aggregations
-            non_numeric_aggs = {
+            text_cols = {
                 'Typing (Primary)': list,
                 'Typing (Secondary)': list,
                 'Format Viability': 'first',
                 'Archetype Suitability': 'first'
             }
             
-            for col, agg_func in non_numeric_aggs.items():
+            for col, agg_func in text_cols.items():
                 if col in data.columns:
                     agg_dict[col] = agg_func
             
-            # Perform the aggregation
+            # Group and aggregate
             team_data = data.groupby('Team Number', as_index=False).agg(agg_dict)
             
             return data, team_data
