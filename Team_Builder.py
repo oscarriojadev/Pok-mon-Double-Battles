@@ -19,7 +19,7 @@ def load_data(uploaded_file):
             # Remove % sign if present and try to convert to float
             data['Meta Usage (%)'] = data['Meta Usage (%)'].apply(
                 lambda x: float(str(x).rstrip('%')) if '%' in str(data['Meta Usage (%)'].iloc[0]) 
-                else pd.to_numeric(data['Meta Usage (%)'], errors='coerce')
+                else pd.to_numeric(data['Meta Usage (%)'], errors='coerce'))
         
         # Create a list of Pokémon for each team
         team_data = data.groupby('Team Number').agg({
