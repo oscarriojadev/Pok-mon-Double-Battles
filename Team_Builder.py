@@ -13,7 +13,13 @@ def load_data(uploaded_file):
         
         # Clean and preprocess data
         data = data.dropna(how='all', axis=1)  # Remove empty columns
-        data['Meta Usage (%)'] = data['Meta Usage (%)'].str.rstrip('%').astype(float)
+        
+        # Handle 'Meta Usage (%)' column - convert only numeric percentages
+        if 'Meta Usage (%)' in data.columns:
+            # Remove % sign if present and try to convert to float
+            data['Meta Usage (%)'] = data['Meta Usage (%)'].apply(
+                lambda x: float(str(x).rstrip('%')) if '%' in str(data['Meta Usage (%)'].iloc[0]) 
+                else pd.to_numeric(data['Meta Usage (%)'], errors='coerce')
         
         # Create a list of Pokémon for each team
         team_data = data.groupby('Team Number').agg({
@@ -90,7 +96,7 @@ def main():
     # Apply filters
     filtered_teams = team_data[
         (team_data['Archetype Suitability'].isin(selected_archetype)) &
-        (team_data['Format Viability'].str.rstrip('%').astype(float) >= min_viability) &
+        (team_data['Format Viability'].astype(str).str.rstrip('%').astype(float) >= min_viability) &
         (team_data['Bulk Score'] >= min_bulk) &
         (team_data['Damage Output Score'] >= min_damage)
     ]
@@ -111,7 +117,7 @@ def main():
                     **Avg Bulk**: {row['Bulk Score']:.0f}/100  
                     **Avg Damage**: {row['Damage Output Score']:.0f}/100  
                     **Synergy**: {row['Pivot Synergy Rating (1-20)']:.1f}/20  
-                    **Meta Usage**: {row['Meta Usage (%)']:.1f}%
+                    **Meta Usage**: {row['Meta Usage (%)']:.1f}% if available
                     """)
                     
                     st.markdown("**Team Members:**")
@@ -121,7 +127,7 @@ def main():
                         row['Typing (Primary)'], 
                         row['Typing (Secondary)']
                     ):
-                        type2_display = f"/{type2}" if pd.notna(type2) else ""
+                        type2_display = f"/{type2}" if pd.notna(type2) and str(type2) != 'nan' else ""
                         st.markdown(f"- {pokemon} ({type1}{type2_display}) - *{role}*")
                     
                     # Button to see detailed team view
