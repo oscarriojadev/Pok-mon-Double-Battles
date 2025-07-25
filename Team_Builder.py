@@ -3,49 +3,82 @@ import pandas as pd
 import plotly.express as px
 from io import StringIO
 
-# Load data function with caching
 @st.cache_data
 def load_data(uploaded_file):
     if uploaded_file is not None:
-        # Read the uploaded file with quoted headers
-        stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
-        data = pd.read_csv(stringio, sep='\t', quotechar='"')  # Using tab separator and quotechar
-        
-        # Clean and preprocess data
-        data = data.dropna(how='all', axis=1)  # Remove empty columns
-        
-        # Clean column names by removing quotes and extra spaces
-        data.columns = data.columns.str.replace('"', '').str.strip()
-        
-        # Handle 'Meta Usage (%)' column - convert only numeric percentages
-        if 'Meta Usage (%)' in data.columns:
-            # First convert to string, then process percentages
-            data['Meta Usage (%)'] = data['Meta Usage (%)'].astype(str)
-            # Remove % sign and convert to float where possible
-            data['Meta Usage (%)'] = pd.to_numeric(
-                data['Meta Usage (%)'].str.replace('%', ''),
-                errors='coerce'
-            )
-        
-        # Create a list of Pokémon for each team
-        team_data = data.groupby('Team Number').agg({
-            'Team Name': 'first',
-            'Pokemon': list,
-            'Role': list,
-            'Typing (Primary)': list,
-            'Typing (Secondary)': list,
-            'Format Viability': 'first',
-            'Pivot Synergy Rating (1-20)': 'mean',
-            'Bulk Score': 'mean',
-            'Damage Output Score': 'mean',
-            'Meta Usage (%)': 'mean',
-            'Archetype Suitability': 'first'
-        }).reset_index()
-        
-        return data, team_data
+        try:
+            # Read the file with multiple attempts for different formats
+            stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
+            
+            # First try with tab separator and quoted headers
+            try:
+                data = pd.read_csv(stringio, sep='\t', quotechar='"')
+            except:
+                stringio.seek(0)
+                data = pd.read_csv(stringio, sep=',', quotechar='"')
+            
+            # Clean column names
+            data.columns = data.columns.str.replace('"', '').str().strip()
+            
+            # Check for alternative column names
+            team_num_col = next((col for col in data.columns if 'team' in col.lower() and 'number' in col.lower()), None)
+            if team_num_col:
+                data = data.rename(columns={team_num_col: 'Team Number'})
+            
+            # Debug output
+            st.write("Columns found in data:", list(data.columns))
+            
+            # Check required columns
+            required_columns = ['Team Number', 'Team Name', 'Pokemon', 'Role']
+            missing_cols = [col for col in required_columns if col not in data.columns]
+            
+            if missing_cols:
+                st.error(f"Missing required columns: {missing_cols}")
+                return None, None
+            
+            # Clean data
+            data = data.dropna(how='all', axis=1)
+            
+            # Handle percentage columns
+            percent_cols = [col for col in data.columns if '%' in col]
+            for col in percent_cols:
+                data[col] = pd.to_numeric(
+                    data[col].astype(str).str.replace('%', ''),
+                    errors='coerce'
+                )
+            
+            # Create team data with flexible column handling
+            agg_dict = {
+                'Team Name': 'first',
+                'Pokemon': list,
+                'Role': list
+            }
+            
+            # Add optional columns
+            optional_columns = {
+                'Typing (Primary)': list,
+                'Typing (Secondary)': list,
+                'Format Viability': 'first',
+                'Pivot Synergy Rating (1-20)': 'mean',
+                'Bulk Score': 'mean',
+                'Damage Output Score': 'mean',
+                'Meta Usage (%)': 'mean',
+                'Archetype Suitability': 'first'
+            }
+            
+            for col, agg_func in optional_columns.items():
+                if col in data.columns:
+                    agg_dict[col] = agg_func
+            
+            team_data = data.groupby('Team Number').agg(agg_dict).reset_index()
+            
+            return data, team_data
+            
+        except Exception as e:
+            st.error(f"Error loading data: {str(e)}")
+            return None, None
     return None, None
 
-# Main app function
 def main():
     st.set_page_config(page_title="Pokémon Team Builder", page_icon="⚔️", layout="wide")
     
@@ -67,7 +100,7 @@ def main():
     st.sidebar.header("Filters")
     
     # Archetype filter
-    archetypes = team_data['Archetype Suitability'].unique()
+    archetypes = team_data['Archetype Suitability'].unique() if 'Archetype Suitability' in team_data.columns else []
     selected_archetype = st.sidebar.multiselect(
         "Team Archetype", 
         archetypes, 
@@ -82,7 +115,7 @@ def main():
         value=50,
         step=5,
         format="%d%%"
-    )
+    ) if 'Format Viability' in team_data.columns else 0
     
     # Bulk and damage filters
     min_bulk = st.sidebar.slider(
@@ -90,22 +123,34 @@ def main():
         min_value=0, 
         max_value=100, 
         value=50
-    )
+    ) if 'Bulk Score' in team_data.columns else 0
     
     min_damage = st.sidebar.slider(
         "Minimum Damage Output", 
         min_value=0, 
         max_value=100, 
         value=50
-    )
+    ) if 'Damage Output Score' in team_data.columns else 0
     
     # Apply filters
-    filtered_teams = team_data[
-        (team_data['Archetype Suitability'].isin(selected_archetype)) &
-        (team_data['Format Viability'].astype(str).str.rstrip('%').astype(float) >= min_viability) &
-        (team_data['Bulk Score'] >= min_bulk) &
-        (team_data['Damage Output Score'] >= min_damage)
-    ]
+    filter_conditions = []
+    
+    if selected_archetype and 'Archetype Suitability' in team_data.columns:
+        filter_conditions.append(team_data['Archetype Suitability'].isin(selected_archetype))
+    
+    if 'Format Viability' in team_data.columns:
+        filter_conditions.append(team_data['Format Viability'].astype(str).str.rstrip('%').astype(float) >= min_viability)
+    
+    if 'Bulk Score' in team_data.columns:
+        filter_conditions.append(team_data['Bulk Score'] >= min_bulk)
+    
+    if 'Damage Output Score' in team_data.columns:
+        filter_conditions.append(team_data['Damage Output Score'] >= min_damage)
+    
+    if filter_conditions:
+        filtered_teams = team_data[pd.concat(filter_conditions, axis=1).all(axis=1)]
+    else:
+        filtered_teams = team_data
     
     # Main content
     st.header("Recommended Teams")
@@ -117,169 +162,124 @@ def main():
         cols = st.columns(3)
         for idx, (_, row) in enumerate(filtered_teams.iterrows()):
             with cols[idx % 3]:
-                with st.expander(f"**{row['Team Name']}** (Rating: {row['Format Viability']})"):
-                    meta_usage = f"{row['Meta Usage (%)']:.1f}%" if not pd.isna(row['Meta Usage (%)']) else "N/A"
-                    st.markdown(f"""
-                    **Archetype**: {row['Archetype Suitability']}  
-                    **Avg Bulk**: {row['Bulk Score']:.0f}/100  
-                    **Avg Damage**: {row['Damage Output Score']:.0f}/100  
-                    **Synergy**: {row['Pivot Synergy Rating (1-20)']:.1f}/20  
-                    **Meta Usage**: {meta_usage}
-                    """)
+                with st.expander(f"**{row['Team Name']}**"):
+                    # Dynamic metric display
+                    metrics = []
+                    
+                    if 'Format Viability' in row:
+                        metrics.append(f"**Rating**: {row['Format Viability']}")
+                    if 'Archetype Suitability' in row:
+                        metrics.append(f"**Archetype**: {row['Archetype Suitability']}")
+                    if 'Bulk Score' in row:
+                        metrics.append(f"**Avg Bulk**: {row['Bulk Score']:.0f}/100")
+                    if 'Damage Output Score' in row:
+                        metrics.append(f"**Avg Damage**: {row['Damage Output Score']:.0f}/100")
+                    if 'Pivot Synergy Rating (1-20)' in row:
+                        metrics.append(f"**Synergy**: {row['Pivot Synergy Rating (1-20)']:.1f}/20")
+                    if 'Meta Usage (%)' in row:
+                        usage = f"{row['Meta Usage (%)']:.1f}%" if not pd.isna(row['Meta Usage (%)']) else "N/A"
+                        metrics.append(f"**Meta Usage**: {usage}")
+                    
+                    st.markdown("\n".join(metrics))
                     
                     st.markdown("**Team Members:**")
-                    for pokemon, role, type1, type2 in zip(
-                        row['Pokemon'], 
-                        row['Role'], 
-                        row['Typing (Primary)'], 
-                        row['Typing (Secondary)']
-                    ):
-                        type2_display = f"/{type2}" if pd.notna(type2) and str(type2) != 'nan' else ""
-                        st.markdown(f"- {pokemon} ({type1}{type2_display}) - *{role}*")
-                    
-                    # Button to see detailed team view
-                    if st.button("View Details", key=f"details_{row['Team Number']}"):
-                        st.session_state['selected_team'] = row['Team Number']
+                    for pokemon, role in zip(row['Pokemon'], row['Role']):
+                        type_info = ""
+                        if 'Typing (Primary)' in row and idx < len(row['Typing (Primary)']):
+                            type1 = row['Typing (Primary)'][idx]
+                            type2 = row['Typing (Secondary)'][idx] if 'Typing (Secondary)' in row and idx < len(row['Typing (Secondary)']) else None
+                            type_info = f" ({type1}{f'/{type2}' if type2 else ''})"
+                        st.markdown(f"- {pokemon}{type_info} - *{role}*")
     
         # Team comparison visualization
-        st.header("Team Comparison")
-        compare_col1, compare_col2 = st.columns(2)
-        
-        with compare_col1:
-            team1 = st.selectbox(
-                "Select first team to compare",
-                filtered_teams['Team Name'],
-                key="team1"
-            )
-        
-        with compare_col2:
-            team2 = st.selectbox(
-                "Select second team to compare",
-                filtered_teams['Team Name'],
-                index=1 if len(filtered_teams) > 1 else 0,
-                key="team2"
-            )
-        
-        if team1 and team2:
-            compare_data = filtered_teams[
-                filtered_teams['Team Name'].isin([team1, team2])
-            ].set_index('Team Name')[
-                ['Bulk Score', 'Damage Output Score', 'Pivot Synergy Rating (1-20)', 'Meta Usage (%)']
-            ].T.reset_index()
+        if len(filtered_teams) > 1:
+            st.header("Team Comparison")
+            compare_col1, compare_col2 = st.columns(2)
             
-            fig = px.bar(
-                compare_data, 
-                x='index', 
-                y=[team1, team2],
-                barmode='group',
-                labels={'index': 'Metric', 'value': 'Score'},
-                title="Team Comparison"
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        
-        # Detailed team view
-        if 'selected_team' in st.session_state:
-            st.header("Team Details")
-            selected_team = st.session_state['selected_team']
-            team_members = data[data['Team Number'] == selected_team]
-            
-            for _, member in team_members.iterrows():
-                with st.expander(f"**{member['Pokemon']}** ({member['Typing (Primary)']}/{member.get('Typing (Secondary)', '')})"):
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.markdown(f"""
-                        **Role**: {member['Role']}  
-                        **Item**: {member['Item']}  
-                        **Ability**: {member['Ability']}  
-                        **Nature**: {member['Nature']}  
-                        **EVs**: {member['EVs']}  
-                        **Speed Tier**: {member['Speed Tier']}
-                        """)
-                    
-                    with col2:
-                        st.markdown(f"""
-                        **Move 1**: {member['Move 1']}  
-                        **Move 2**: {member['Move 2']}  
-                        **Move 3**: {member['Move 3']}  
-                        **Move 4**: {member['Move 4']}  
-                        **Synergy Notes**: {member.get('Synergy Notes', 'N/A')}
-                        """)
-            
-            # Type coverage analysis
-            st.subheader("Type Coverage Analysis")
-            all_types = []
-            for _, member in team_members.iterrows():
-                types = [member['Typing (Primary)']]
-                if pd.notna(member.get('Typing (Secondary)')):
-                    types.append(member['Typing (Secondary)'])
-                all_types.extend(types)
-            
-            type_counts = pd.Series(all_types).value_counts().reset_index()
-            type_counts.columns = ['Type', 'Count']
-            
-            fig = px.bar(
-                type_counts, 
-                x='Type', 
-                y='Count',
-                title="Team Type Distribution"
-            )
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Weakness analysis
-            st.subheader("Team Weakness Analysis")
-            weaknesses = []
-            for _, member in team_members.iterrows():
-                if pd.notna(member.get('Weakness Overlaps')):
-                    weaknesses.extend(str(member['Weakness Overlaps']).split(','))
-            
-            if weaknesses:
-                weakness_counts = pd.Series(weaknesses).value_counts().reset_index()
-                weakness_counts.columns = ['Weakness', 'Count']
-                
-                fig = px.bar(
-                    weakness_counts, 
-                    x='Weakness', 
-                    y='Count',
-                    title="Common Team Weaknesses"
+            with compare_col1:
+                team1 = st.selectbox(
+                    "Select first team to compare",
+                    filtered_teams['Team Name'],
+                    key="team1"
                 )
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("No weakness data available for this team.")
+            
+            with compare_col2:
+                team2 = st.selectbox(
+                    "Select second team to compare",
+                    filtered_teams['Team Name'],
+                    index=1,
+                    key="team2"
+                )
+            
+            if team1 and team2:
+                compare_metrics = []
+                if 'Bulk Score' in filtered_teams.columns:
+                    compare_metrics.append('Bulk Score')
+                if 'Damage Output Score' in filtered_teams.columns:
+                    compare_metrics.append('Damage Output Score')
+                if 'Pivot Synergy Rating (1-20)' in filtered_teams.columns:
+                    compare_metrics.append('Pivot Synergy Rating (1-20)')
+                if 'Meta Usage (%)' in filtered_teams.columns:
+                    compare_metrics.append('Meta Usage (%)')
+                
+                if compare_metrics:
+                    compare_data = filtered_teams[
+                        filtered_teams['Team Name'].isin([team1, team2])
+                    ].set_index('Team Name')[compare_metrics].T.reset_index()
+                    
+                    fig = px.bar(
+                        compare_data, 
+                        x='index', 
+                        y=[team1, team2],
+                        barmode='group',
+                        labels={'index': 'Metric', 'value': 'Score'},
+                        title="Team Comparison"
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
     
     # "Fill a Gap" tool
-    st.sidebar.header("Fill a Gap Tool")
-    st.sidebar.markdown("Find Pokémon to cover your team's weaknesses")
-    
-    needed_type = st.sidebar.selectbox(
-        "Needed Type Coverage",
-        sorted(data['Typing (Primary)'].unique()),
-        index=0
-    )
-    
-    needed_role = st.sidebar.selectbox(
-        "Needed Role",
-        sorted(data['Role'].unique()),
-        index=0
-    )
-    
-    if st.sidebar.button("Find Recommendations"):
-        recommendations = data[
-            (data['Typing (Primary)'] == needed_type) |
-            (data['Typing (Secondary)'] == needed_type)
-        ].sort_values('Damage Output Score', ascending=False)
+    if data is not None:
+        st.sidebar.header("Fill a Gap Tool")
+        st.sidebar.markdown("Find Pokémon to cover your team's weaknesses")
         
-        if len(recommendations) > 0:
-            st.sidebar.success(f"Top {needed_type} {needed_role} recommendations:")
-            for _, rec in recommendations.head(3).iterrows():
-                st.sidebar.markdown(f"""
-                **{rec['Pokemon']}**  
-                Role: {rec['Role']}  
-                Damage: {rec['Damage Output Score']}/100  
-                Bulk: {rec['Bulk Score']}/100
-                """)
-        else:
-            st.sidebar.warning("No matching Pokémon found. Try different criteria.")
+        type_col = 'Typing (Primary)' if 'Typing (Primary)' in data.columns else None
+        role_col = 'Role' if 'Role' in data.columns else None
+        
+        if type_col and role_col:
+            needed_type = st.sidebar.selectbox(
+                "Needed Type Coverage",
+                sorted(data[type_col].unique()),
+                index=0
+            )
+            
+            needed_role = st.sidebar.selectbox(
+                "Needed Role",
+                sorted(data[role_col].unique()),
+                index=0
+            )
+            
+            if st.sidebar.button("Find Recommendations"):
+                type_condition = (data[type_col] == needed_type)
+                if 'Typing (Secondary)' in data.columns:
+                    type_condition |= (data['Typing (Secondary)'] == needed_type)
+                
+                recommendations = data[
+                    type_condition &
+                    (data[role_col] == needed_role)
+                ].sort_values('Damage Output Score' if 'Damage Output Score' in data.columns else 'Pokemon', 
+                            ascending=False)
+                
+                if len(recommendations) > 0:
+                    st.sidebar.success(f"Top {needed_type} {needed_role} recommendations:")
+                    for _, rec in recommendations.head(3).iterrows():
+                        rec_info = [f"**{rec['Pokemon']}**", f"Role: {rec['Role']}"]
+                        if 'Damage Output Score' in rec:
+                            rec_info.append(f"Damage: {rec['Damage Output Score']}/100")
+                        if 'Bulk Score' in rec:
+                            rec_info.append(f"Bulk: {rec['Bulk Score']}/100")
+                        st.sidebar.markdown("\n".join(rec_info))
+                else:
+                    st.sidebar.warning("No matching Pokémon found. Try different criteria.")
 
 if __name__ == "__main__":
     main()
