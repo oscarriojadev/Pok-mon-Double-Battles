@@ -70,7 +70,11 @@ def load_data(uploaded_file) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFr
             'Pokemon': list,
             'Role': list,
             'Typing (Primary)': list,
-            'Typing (Secondary)': list,
+            'Typing (Secondary)': list
+        }
+        
+        # Add optional metrics if they exist
+        optional_metrics = {
             'Format Viability': 'mean',
             'Pivot Synergy Rating (1-20)': 'mean',
             'Bulk Score': 'mean',
@@ -79,8 +83,9 @@ def load_data(uploaded_file) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFr
             'Archetype Suitability': 'first'
         }
         
-        # Only include columns that exist in the data
-        agg_dict = {k: v for k, v in agg_dict.items() if k in data.columns}
+        for col, agg_func in optional_metrics.items():
+            if col in data.columns:
+                agg_dict[col] = agg_func
         
         team_data = data.groupby('Team Number', as_index=False).agg(agg_dict)
         
