@@ -17,8 +17,8 @@ def load_data(uploaded_file):
                 stringio.seek(0)
                 data = pd.read_csv(stringio, sep=',', quotechar='"')
             
-            # Clean column names
-            data.columns = data.columns.str.replace('"', '').str().strip()
+            # Clean column names - FIXED THE ERROR HERE
+            data.columns = data.columns.str.replace('"', '').str.strip()
             
             # Check for alternative column names
             team_num_col = next((col for col in data.columns if 'team' in col.lower() and 'number' in col.lower()), None)
