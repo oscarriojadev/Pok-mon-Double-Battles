@@ -1,60 +1,49 @@
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-from io import StringIO
-
 @st.cache_data
 def load_data(uploaded_file):
     if uploaded_file is not None:
         try:
-            # Read the file with multiple attempts for different formats
+            # Read the file with tab separator (since your sample uses tabs)
             stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
+            data = pd.read_csv(stringio, sep='\t')
             
-            # First try with tab separator and quoted headers
-            try:
-                data = pd.read_csv(stringio, sep='\t', quotechar='"')
-            except:
-                stringio.seek(0)
-                data = pd.read_csv(stringio, sep=',', quotechar='"')
+            # Clean column names - remove extra spaces and quotes
+            data.columns = data.columns.str.strip().str.replace('"', '')
             
-            # Clean column names - FIXED THE ERROR HERE
-            data.columns = data.columns.str.replace('"', '').str.strip()
+            # Debug output - show the columns we found
+            st.write("Columns in uploaded data:", list(data.columns))
             
-            # Check for alternative column names
-            team_num_col = next((col for col in data.columns if 'team' in col.lower() and 'number' in col.lower()), None)
-            if team_num_col:
-                data = data.rename(columns={team_num_col: 'Team Number'})
+            # Verify we have the required columns
+            required_columns = {
+                'Team Number': 'Team Number',
+                'Team Name': 'Team Name', 
+                'Pokemon': 'Pokemon',
+                'Role': 'Role'
+            }
             
-            # Debug output
-            st.write("Columns found in data:", list(data.columns))
-            
-            # Check required columns
-            required_columns = ['Team Number', 'Team Name', 'Pokemon', 'Role']
+            # Check for missing columns
             missing_cols = [col for col in required_columns if col not in data.columns]
-            
             if missing_cols:
                 st.error(f"Missing required columns: {missing_cols}")
                 return None, None
             
-            # Clean data
+            # Clean data - remove empty columns
             data = data.dropna(how='all', axis=1)
             
             # Handle percentage columns
-            percent_cols = [col for col in data.columns if '%' in col]
-            for col in percent_cols:
-                data[col] = pd.to_numeric(
-                    data[col].astype(str).str.replace('%', ''),
+            if 'Meta Usage (%)' in data.columns:
+                data['Meta Usage (%)'] = pd.to_numeric(
+                    data['Meta Usage (%)'].astype(str).str.replace('%', ''),
                     errors='coerce'
                 )
             
-            # Create team data with flexible column handling
+            # Create team data aggregation dictionary
             agg_dict = {
                 'Team Name': 'first',
                 'Pokemon': list,
                 'Role': list
             }
             
-            # Add optional columns
+            # Add optional columns if they exist
             optional_columns = {
                 'Typing (Primary)': list,
                 'Typing (Secondary)': list,
@@ -70,6 +59,7 @@ def load_data(uploaded_file):
                 if col in data.columns:
                     agg_dict[col] = agg_func
             
+            # Group by Team Number
             team_data = data.groupby('Team Number').agg(agg_dict).reset_index()
             
             return data, team_data
