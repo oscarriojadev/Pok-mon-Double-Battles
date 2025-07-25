@@ -6,61 +6,74 @@ import plotly.express as px
 def load_data(uploaded_file):
     if uploaded_file is not None:
         try:
-            # First try reading as CSV (comma-separated)
+            # Read the file with multiple attempts
+            content = uploaded_file.getvalue().decode('utf-8')
+            
+            # First try tab separator
             try:
-                data = pd.read_csv(uploaded_file)
+                data = pd.read_csv(StringIO(content), sep='\t')
             except:
-                # If that fails, try reading as TSV (tab-separated)
-                uploaded_file.seek(0)  # Reset file pointer
-                data = pd.read_csv(uploaded_file, sep='\t')
+                # Then try comma separator
+                data = pd.read_csv(StringIO(content))
             
             # Clean column names
-            data.columns = data.columns.str.strip().str.replace('"', '').str.replace(',', '')
+            data.columns = data.columns.str.strip().str.replace('"', '')
             
-            # Debug output
-            st.write("First few rows of data:", data.head())
-            st.write("Columns in uploaded data:", list(data.columns))
+            # Convert numeric columns
+            numeric_cols = [
+                'Pivot Synergy Rating (1-20)',
+                'Bulk Score', 
+                'Damage Output Score',
+                'Meta Usage (%)'
+            ]
             
-            # Verify we have the required columns
-            required_columns = ['Team Number', 'Team Name', 'Pokemon', 'Role']
-            missing_cols = [col for col in required_columns if col not in data.columns]
+            for col in numeric_cols:
+                if col in data.columns:
+                    # Remove % signs and convert to float
+                    if col == 'Meta Usage (%)':
+                        data[col] = data[col].astype(str).str.replace('%', '')
+                    data[col] = pd.to_numeric(data[col], errors='coerce')
             
+            # Verify required columns
+            required_cols = ['Team Number', 'Team Name', 'Pokemon', 'Role']
+            missing_cols = [col for col in required_cols if col not in data.columns]
             if missing_cols:
                 st.error(f"Missing required columns: {missing_cols}")
-                st.error("Please check your file format and ensure it's properly delimited.")
                 return None, None
             
-            # Rest of your processing...
-            data = data.dropna(how='all', axis=1)
-            
-            if 'Meta Usage (%)' in data.columns:
-                data['Meta Usage (%)'] = pd.to_numeric(
-                    data['Meta Usage (%)'].astype(str).str.replace('%', ''),
-                    errors='coerce'
-                )
-            
+            # Define aggregation carefully
             agg_dict = {
                 'Team Name': 'first',
                 'Pokemon': list,
                 'Role': list
             }
             
-            optional_columns = {
-                'Typing (Primary)': list,
-                'Typing (Secondary)': list,
-                'Format Viability': 'first',
+            # Only add numeric aggregations for numeric columns
+            numeric_aggs = {
                 'Pivot Synergy Rating (1-20)': 'mean',
                 'Bulk Score': 'mean',
                 'Damage Output Score': 'mean',
-                'Meta Usage (%)': 'mean',
+                'Meta Usage (%)': 'mean'
+            }
+            
+            for col, agg_func in numeric_aggs.items():
+                if col in data.columns and pd.api.types.is_numeric_dtype(data[col]):
+                    agg_dict[col] = agg_func
+            
+            # Add non-numeric aggregations
+            non_numeric_aggs = {
+                'Typing (Primary)': list,
+                'Typing (Secondary)': list,
+                'Format Viability': 'first',
                 'Archetype Suitability': 'first'
             }
             
-            for col, agg_func in optional_columns.items():
+            for col, agg_func in non_numeric_aggs.items():
                 if col in data.columns:
                     agg_dict[col] = agg_func
             
-            team_data = data.groupby('Team Number').agg(agg_dict).reset_index()
+            # Group and aggregate
+            team_data = data.groupby('Team Number', as_index=False).agg(agg_dict)
             
             return data, team_data
             
@@ -68,7 +81,6 @@ def load_data(uploaded_file):
             st.error(f"Error loading data: {str(e)}")
             return None, None
     return None, None
-
 
 def main():
     st.set_page_config(page_title="Pokémon Team Builder", page_icon="⚔️", layout="wide")
