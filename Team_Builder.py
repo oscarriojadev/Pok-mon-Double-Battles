@@ -9,17 +9,20 @@ def load_data(uploaded_file):
     if uploaded_file is not None:
         # Read the uploaded file
         stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
-        data = pd.read_csv(stringio)
+        data = pd.read_csv(stringio, sep='\t')  # Using tab separator based on sample
         
         # Clean and preprocess data
         data = data.dropna(how='all', axis=1)  # Remove empty columns
         
         # Handle 'Meta Usage (%)' column - convert only numeric percentages
         if 'Meta Usage (%)' in data.columns:
-            # Remove % sign if present and try to convert to float
-            data['Meta Usage (%)'] = data['Meta Usage (%)'].apply(
-                lambda x: float(str(x).rstrip('%')) if '%' in str(data['Meta Usage (%)'].iloc[0]) 
-                else pd.to_numeric(data['Meta Usage (%)'], errors='coerce'))
+            # First convert to string, then process percentages
+            data['Meta Usage (%)'] = data['Meta Usage (%)'].astype(str)
+            # Remove % sign and convert to float where possible
+            data['Meta Usage (%)'] = pd.to_numeric(
+                data['Meta Usage (%)'].str.replace('%', ''),
+                errors='coerce'
+            )
         
         # Create a list of Pokémon for each team
         team_data = data.groupby('Team Number').agg({
@@ -50,11 +53,11 @@ def main():
     """)
     
     # File upload
-    uploaded_file = st.file_uploader("Upload your Pokémon Teams CSV", type="csv")
+    uploaded_file = st.file_uploader("Upload your Pokémon Teams CSV", type=["csv", "tsv"])
     data, team_data = load_data(uploaded_file)
     
     if data is None or team_data is None:
-        st.info("Please upload a CSV file to begin.")
+        st.info("Please upload a CSV/TSV file to begin.")
         return
     
     # Sidebar filters
@@ -112,12 +115,13 @@ def main():
         for idx, (_, row) in enumerate(filtered_teams.iterrows()):
             with cols[idx % 3]:
                 with st.expander(f"**{row['Team Name']}** (Rating: {row['Format Viability']})"):
+                    meta_usage = f"{row['Meta Usage (%)']:.1f}%" if not pd.isna(row['Meta Usage (%)']) else "N/A"
                     st.markdown(f"""
                     **Archetype**: {row['Archetype Suitability']}  
                     **Avg Bulk**: {row['Bulk Score']:.0f}/100  
                     **Avg Damage**: {row['Damage Output Score']:.0f}/100  
                     **Synergy**: {row['Pivot Synergy Rating (1-20)']:.1f}/20  
-                    **Meta Usage**: {row['Meta Usage (%)']:.1f}% if available
+                    **Meta Usage**: {meta_usage}
                     """)
                     
                     st.markdown("**Team Members:**")
@@ -224,7 +228,7 @@ def main():
             weaknesses = []
             for _, member in team_members.iterrows():
                 if pd.notna(member.get('Weakness Overlaps')):
-                    weaknesses.extend(member['Weakness Overlaps'].split(','))
+                    weaknesses.extend(str(member['Weakness Overlaps']).split(','))
             
             if weaknesses:
                 weakness_counts = pd.Series(weaknesses).value_counts().reset_index()
