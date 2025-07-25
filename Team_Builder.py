@@ -6,13 +6,19 @@ import plotly.express as px
 def load_data(uploaded_file):
     if uploaded_file is not None:
         try:
-            # Read the file with explicit tab separator and header
-            data = pd.read_csv(uploaded_file, sep='\t', header=0)
+            # First try reading as CSV (comma-separated)
+            try:
+                data = pd.read_csv(uploaded_file)
+            except:
+                # If that fails, try reading as TSV (tab-separated)
+                uploaded_file.seek(0)  # Reset file pointer
+                data = pd.read_csv(uploaded_file, sep='\t')
             
             # Clean column names
-            data.columns = data.columns.str.strip().str.replace('"', '')
+            data.columns = data.columns.str.strip().str.replace('"', '').str.replace(',', '')
             
-            # Debug output - show the columns we found
+            # Debug output
+            st.write("First few rows of data:", data.head())
             st.write("Columns in uploaded data:", list(data.columns))
             
             # Verify we have the required columns
@@ -21,26 +27,24 @@ def load_data(uploaded_file):
             
             if missing_cols:
                 st.error(f"Missing required columns: {missing_cols}")
+                st.error("Please check your file format and ensure it's properly delimited.")
                 return None, None
             
-            # Clean data - remove empty columns
+            # Rest of your processing...
             data = data.dropna(how='all', axis=1)
             
-            # Handle percentage columns
             if 'Meta Usage (%)' in data.columns:
                 data['Meta Usage (%)'] = pd.to_numeric(
                     data['Meta Usage (%)'].astype(str).str.replace('%', ''),
                     errors='coerce'
                 )
             
-            # Create team data aggregation dictionary
             agg_dict = {
                 'Team Name': 'first',
                 'Pokemon': list,
                 'Role': list
             }
             
-            # Add optional columns if they exist
             optional_columns = {
                 'Typing (Primary)': list,
                 'Typing (Secondary)': list,
@@ -56,7 +60,6 @@ def load_data(uploaded_file):
                 if col in data.columns:
                     agg_dict[col] = agg_func
             
-            # Group by Team Number
             team_data = data.groupby('Team Number').agg(agg_dict).reset_index()
             
             return data, team_data
