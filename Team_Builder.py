@@ -2,11 +2,16 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from io import StringIO
+
 @st.cache_data
 def load_data(uploaded_file):
     if uploaded_file is not None:
         try:
-            # Read the file with multiple attempts
+            # Read file content
             content = uploaded_file.getvalue().decode('utf-8')
             
             # First try tab separator
@@ -29,9 +34,10 @@ def load_data(uploaded_file):
             
             for col in numeric_cols:
                 if col in data.columns:
-                    # Remove % signs and convert to float
+                    # Special handling for percentage column
                     if col == 'Meta Usage (%)':
                         data[col] = data[col].astype(str).str.replace('%', '')
+                    # Convert to numeric, coercing errors to NaN
                     data[col] = pd.to_numeric(data[col], errors='coerce')
             
             # Verify required columns
@@ -41,14 +47,14 @@ def load_data(uploaded_file):
                 st.error(f"Missing required columns: {missing_cols}")
                 return None, None
             
-            # Define aggregation carefully
+            # Define aggregation rules
             agg_dict = {
                 'Team Name': 'first',
                 'Pokemon': list,
                 'Role': list
             }
             
-            # Only add numeric aggregations for numeric columns
+            # Add numeric aggregations only for numeric columns
             numeric_aggs = {
                 'Pivot Synergy Rating (1-20)': 'mean',
                 'Bulk Score': 'mean',
@@ -72,7 +78,7 @@ def load_data(uploaded_file):
                 if col in data.columns:
                     agg_dict[col] = agg_func
             
-            # Group and aggregate
+            # Perform the aggregation
             team_data = data.groupby('Team Number', as_index=False).agg(agg_dict)
             
             return data, team_data
