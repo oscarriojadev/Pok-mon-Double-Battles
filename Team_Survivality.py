@@ -693,71 +693,94 @@ Garchomp,Dragon,Ground,108,130,95,80,85,102,18.7,A""")
     with tab1:  # Team Overview tab
         st.header("Team Overview & Weaknesses")
         
+        # First verify the columns we actually have
+        st.write("Available columns:", team_df.columns.tolist())
+        
         # 1. Display Raw Team Data Exactly As Uploaded
         st.subheader("Your Team Composition")
-        st.dataframe(team_df[[
-            'Pokemon', 'Typing (Primary)', 'Typing (Secondary)',
-            'Item', 'Ability', 'EVs', 'Nature',
-            'Move 1', 'Move 2', 'Move 3', 'Move 4'
-        ]], use_container_width=True, height=400)
+        try:
+            st.dataframe(team_df[[
+                'Pokemon', 'Typing (Primary)', 'Typing (Secondary)',
+                'Item', 'Ability', 'EVs', 'Nature',
+                'Move 1', 'Move 2', 'Move 3', 'Move 4'
+            ]], use_container_width=True, height=400)
+        except KeyError as e:
+            st.error(f"Column access error: {e}")
+            st.write("Falling back to showing all columns")
+            st.dataframe(team_df, use_container_width=True)
     
         # 2. Calculate and Display Team Stats
         st.subheader("Team Stats Summary")
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            avg_hp = team_df['Base Stats: HP'].mean()
-            st.metric("Average HP", f"{avg_hp:.0f}")
-        
+            try:
+                avg_hp = team_df['Base Stats: HP'].mean()
+                st.metric("Average HP", f"{avg_hp:.0f}")
+            except KeyError:
+                st.warning("Could not find HP stats")
+    
         with col2:
-            avg_speed = team_df['Base Stats: Spe'].mean()
-            st.metric("Average Speed", f"{avg_speed:.0f}")
-        
+            try:
+                avg_speed = team_df['Base Stats: Spe'].mean()
+                st.metric("Average Speed", f"{avg_speed:.0f}")
+            except KeyError:
+                st.warning("Could not find Speed stats")
+    
         with col3:
-            physical_attackers = len([x for x in team_df['Role'] if 'Physical' in str(x)])
-            st.metric("Physical Attackers", physical_attackers)
+            try:
+                physical_attackers = len([x for x in team_df['Role'] if 'Physical' in str(x)])
+                st.metric("Physical Attackers", physical_attackers)
+            except KeyError:
+                st.warning("Could not determine attacker types")
     
         # 3. Type Weakness Analysis
         st.subheader("Type Weakness Analysis")
         
-        team_types = []
-        for _, row in team_df.iterrows():
-            types = [row['Typing (Primary)']]
-            if pd.notna(row['Typing (Secondary)']) and row['Typing (Secondary)'] != 'NA':
-                types.append(row['Typing (Secondary)'])
-            team_types.append(types)
-        
-        weaknesses = analyze_team_weaknesses(team_types, load_type_chart())
-        
-        if weaknesses:
-            weakness_df = pd.DataFrame(list(weaknesses.items()), 
-                                     columns=['Type', 'Weak Members'])
-            fig = px.bar(weakness_df, x='Type', y='Weak Members',
-                        title="Team Type Weaknesses",
-                        color='Weak Members',
-                        color_continuous_scale='Reds')
-            st.plotly_chart(fig, use_container_width=True)
+        try:
+            team_types = []
+            for _, row in team_df.iterrows():
+                types = [row['Typing (Primary)']]
+                if pd.notna(row['Typing (Secondary)']) and row['Typing (Secondary)'] != 'NA':
+                    types.append(row['Typing (Secondary)'])
+                team_types.append(types)
+            
+            weaknesses = analyze_team_weaknesses(team_types, load_type_chart())
+            
+            if weaknesses:
+                weakness_df = pd.DataFrame(list(weaknesses.items()), 
+                                         columns=['Type', 'Weak Members'])
+                fig = px.bar(weakness_df, x='Type', y='Weak Members',
+                            title="Team Type Weaknesses",
+                            color='Weak Members',
+                            color_continuous_scale='Reds')
+                st.plotly_chart(fig, use_container_width=True)
+        except KeyError as e:
+            st.error(f"Could not perform type analysis: {e}")
     
         # 4. Speed Tier Analysis
         st.subheader("Speed Tier Distribution")
         
-        speed_data = []
-        for _, row in team_df.iterrows():
-            speed_data.append({
-                'Pokemon': row['Pokemon'],
-                'Speed': row['Base Stats: Spe'],
-                'Tier': get_speed_tier(row['Base Stats: Spe'])
-            })
-        
-        speed_df = pd.DataFrame(speed_data)
-        fig = px.scatter(speed_df, x='Pokemon', y='Speed', color='Tier',
-                       title="Team Speed Distribution",
-                       hover_data=['Tier'])
-        fig.add_hline(y=70, line_dash="dash", line_color="red",
-                     annotation_text="Trick Room Threshold")
-        fig.add_hline(y=100, line_dash="dash", line_color="orange",
-                     annotation_text="Average Speed")
-        st.plotly_chart(fig, use_container_width=True)
+        try:
+            speed_data = []
+            for _, row in team_df.iterrows():
+                speed_data.append({
+                    'Pokemon': row['Pokemon'],
+                    'Speed': row['Base Stats: Spe'],
+                    'Tier': get_speed_tier(row['Base Stats: Spe'])
+                })
+            
+            speed_df = pd.DataFrame(speed_data)
+            fig = px.scatter(speed_df, x='Pokemon', y='Speed', color='Tier',
+                           title="Team Speed Distribution",
+                           hover_data=['Tier'])
+            fig.add_hline(y=70, line_dash="dash", line_color="red",
+                         annotation_text="Trick Room Threshold")
+            fig.add_hline(y=100, line_dash="dash", line_color="orange",
+                         annotation_text="Average Speed")
+            st.plotly_chart(fig, use_container_width=True)
+        except KeyError as e:
+            st.error(f"Could not perform speed analysis: {e}")
     
     with tab2:
         st.header("Meta Threat Analysis")
