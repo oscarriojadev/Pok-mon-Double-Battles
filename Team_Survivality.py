@@ -411,94 +411,143 @@ def main():
     with tab2:  # Threat Analysis tab - uses both team_df and threats_df
         st.header("Meta Threat Analysis")
         
+        # Check if threats data is loaded
         if 'threats_df' not in locals():
             st.warning("Please upload threats data to use this feature")
             return
         
-        # Threat filtering
+        # Ensure we have the required columns
+        if 'Tier' not in threats_df.columns:
+            if 'Usage' in threats_df.columns:
+                # Create Tier column based on Usage if it doesn't exist
+                threats_df['Tier'] = threats_df['Usage'].apply(
+                    lambda x: 'S' if x >= 80 else 'A' if x >= 60 else 'B' if x >= 30 else 'C'
+                )
+            else:
+                # If no Usage column, create default Tier
+                st.warning("No 'Usage' column found - assigning default tiers")
+                threats_df['Tier'] = 'B'  # Default to mid-tier
+        
+        # Threat filtering UI
         col1, col2 = st.columns(2)
+        
         with col1:
-            min_usage = st.slider("Minimum Usage % to Consider", 0.0, 50.0, 5.0, 0.5)
+            if 'Usage' in threats_df.columns:
+                min_usage = st.slider(
+                    "Minimum Usage % to Consider", 
+                    0.0, 50.0, 5.0, 0.5,
+                    help="Filter by minimum usage percentage"
+                )
+            else:
+                st.warning("No usage data available")
+                min_usage = 0.0
+        
         with col2:
             available_tiers = threats_df['Tier'].unique()
-            selected_tiers = st.multiselect("Filter by Tier", available_tiers, default=list(available_tiers))
+            selected_tiers = st.multiselect(
+                "Filter by Tier", 
+                available_tiers, 
+                default=list(available_tiers),
+                help="Filter by threat tier (S=highest usage)"
+            )
         
-        # Filter threats
-        filtered_threats = threats_df[
-            (threats_df['Usage'] >= min_usage) & 
-            (threats_df['Tier'].isin(selected_tiers) if selected_tiers else True)
-        ]
+        # Filter threats based on selections
+        filter_conditions = []
         
-        if len(filtered_threats) > 0:
-            # Analyze matchups with comprehensive move estimation
-            threat_analysis = analyze_comprehensive_threats(team_df, filtered_threats, type_chart)
-            
-            # Critical threats display
-            ohko_threats = threat_analysis[threat_analysis['OHKO Count'] >= 1]
-            if len(ohko_threats) > 0:
-                st.error(f"🚨 {len(ohko_threats)} threats have OHKO potential!")
-                
-                # Show OHKO threats in detail
-                st.dataframe(
-                    ohko_threats[['Threat', 'Types', 'Usage %', 'OHKO Count', 'Most Dangerous Move', 'Worst Matchup']].round(1),
-                    use_container_width=True
-                )
-            
-            # 2HKO Analysis
-            twohko_threats = threat_analysis[threat_analysis['2HKO Count'] >= 3]
-            if len(twohko_threats) > 0:
-                st.warning(f"⚠️ {len(twohko_threats)} threats can 2HKO most of your team")
-            
-            # Full analysis with enhanced columns
-            st.subheader("Complete Threat Assessment")
-            
-            # Enhanced styling for the new columns
-            def style_threat_analysis(val):
-                if isinstance(val, (int, float)):
-                    if val >= 100:  # OHKO range
-                        return 'background-color: #ffcdd2; color: black; font-weight: bold'
-                    elif val >= 75:  # Dangerous
-                        return 'background-color: #fff3e0; color: black'
-                    elif val >= 50:  # Moderate
-                        return 'background-color: #f3e5f5; color: black'
-                    else:  # Safe
-                        return 'background-color: #e8f5e8; color: black'
-                return ''
-            
-            def style_ohko_count(val):
-                if val >= 2:
-                    return 'background-color: #ff1744; color: white; font-weight: bold'
-                elif val >= 1:
-                    return 'background-color: #ff5722; color: white'
-                elif val >= 0.5:
-                    return 'background-color: #ff9800; color: black'
-                return ''
-            
-            styled_df = (threat_analysis.style
-             .map(style_threat_analysis, subset=['Max Damage %'])  
-             .map(style_ohko_count, subset=['OHKO Count'])        
-             .format({'OHKO Count': '{:.1f}', 'Max Damage %': '{:.1f}%', 'Usage %': '{:.1f}%'}))
-            
-            st.dataframe(styled_df, use_container_width=True)
-            
-            # Enhanced threat visualization
-            fig = px.scatter(threat_analysis, 
-                           x='Usage %', y='Max Damage %', 
-                           size='OHKO Count', 
-                           color='2HKO Count',
-                           hover_name='Threat',
-                           hover_data=['Most Dangerous Move', 'Worst Matchup'],
-                           title="Threat Danger Analysis: OHKO Potential vs Meta Relevance",
-                           labels={'Max Damage %': 'Highest Damage % to Team',
-                                  '2HKO Count': '2HKO Potential'},
-                           color_continuous_scale='Reds')
-            
-            fig.add_hline(y=100, line_dash="dash", line_color="red", annotation_text="OHKO Threshold")
-            fig.add_hline(y=50, line_dash="dash", line_color="orange", annotation_text="2HKO Threshold")
-            st.plotly_chart(fig, use_container_width=True)
+        if 'Usage' in threats_df.columns:
+            filter_conditions.append(threats_df['Usage'] >= min_usage)
+        
+        if selected_tiers:
+            filter_conditions.append(threats_df['Tier'].isin(selected_tiers))
+        
+        if filter_conditions:
+            filtered_threats = threats_df[np.logical_and.reduce(filter_conditions)]
         else:
-            st.warning("No threats found matching your criteria. Try adjusting the filters.")
-    
+            filtered_threats = threats_df.copy()
+        
+        if len(filtered_threats) == 0:
+            st.warning("No threats match your filters. Try adjusting criteria.")
+            return
+        
+        # Analyze matchups with comprehensive move estimation
+        threat_analysis = analyze_comprehensive_threats(team_df, filtered_threats, load_type_chart())
+        
+        # Critical threats display
+        ohko_threats = threat_analysis[threat_analysis['OHKO Count'] >= 1]
+        if len(ohko_threats) > 0:
+            st.error(f"🚨 Critical Threat Warning: {len(ohko_threats)} threats can OHKO your team!")
+            
+            # Show OHKO threats in detail
+            st.dataframe(
+                ohko_threats[['Threat', 'Types', 'Usage %', 'OHKO Count', 'Most Dangerous Move', 'Worst Matchup']].round(1),
+                use_container_width=True,
+                hide_index=True
+            )
+        
+        # 2HKO Analysis
+        twohko_threats = threat_analysis[threat_analysis['2HKO Count'] >= 3]
+        if len(twohko_threats) > 0:
+            st.warning(f"⚠️ Warning: {len(twohko_threats)} threats can 2HKO most of your team")
+        
+        # Full analysis with enhanced columns
+        st.subheader("Complete Threat Assessment")
+        
+        # Enhanced styling for the new columns
+        def style_threat_analysis(val):
+            if isinstance(val, (int, float)):
+                if val >= 100:  # OHKO range
+                    return 'background-color: #ffcdd2; color: black; font-weight: bold'
+                elif val >= 75:  # Dangerous
+                    return 'background-color: #fff3e0; color: black'
+                elif val >= 50:  # Moderate
+                    return 'background-color: #f3e5f5; color: black'
+                else:  # Safe
+                    return 'background-color: #e8f5e8; color: black'
+            return ''
+        
+        def style_ohko_count(val):
+            if val >= 2:
+                return 'background-color: #ff1744; color: white; font-weight: bold'
+            elif val >= 1:
+                return 'background-color: #ff5722; color: white'
+            elif val >= 0.5:
+                return 'background-color: #ff9800; color: black'
+            return ''
+        
+        styled_df = (threat_analysis.style
+            .map(style_threat_analysis, subset=['Max Damage %'])  
+            .map(style_ohko_count, subset=['OHKO Count'])        
+            .format({
+                'OHKO Count': '{:.1f}', 
+                'Max Damage %': '{:.1f}%', 
+                'Usage %': '{:.1f}%'
+            }))
+        
+        st.dataframe(styled_df, use_container_width=True)
+        
+        # Enhanced threat visualization
+        fig = px.scatter(
+            threat_analysis, 
+            x='Usage %' if 'Usage %' in threat_analysis.columns else 'Tier',
+            y='Max Damage %', 
+            size='OHKO Count', 
+            color='2HKO Count',
+            hover_name='Threat',
+            hover_data=['Most Dangerous Move', 'Worst Matchup'],
+            title="Threat Danger Analysis",
+            labels={
+                'Max Damage %': 'Highest Damage % to Team',
+                '2HKO Count': '2HKO Potential'
+            },
+            color_continuous_scale='Reds'
+        )
+        
+        fig.add_hline(y=100, line_dash="dash", line_color="red", 
+                     annotation_text="OHKO Threshold")
+        fig.add_hline(y=50, line_dash="dash", line_color="orange", 
+                     annotation_text="2HKO Threshold")
+        st.plotly_chart(fig, use_container_width=True)
+        
     with tab3:
         st.header("Advanced Survival Calculator")
         
