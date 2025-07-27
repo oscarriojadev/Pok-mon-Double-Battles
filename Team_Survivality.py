@@ -19,89 +19,68 @@ def find_column(df, possible_names):
     return None
 
 def preprocess_all_pokemon_data_for_threats(df):
-    """Process threats dataset with extensive column name flexibility and validation"""
-    if df.empty:
-        st.error("Empty DataFrame provided to preprocess_all_pokemon_data_for_threats")
-        return None
-
+    """Process threats dataset with your specific column names"""
     processed = pd.DataFrame()
     
-    # Convert all column names to lowercase for case-insensitive matching
-    df.columns = df.columns.str.strip().str.lower()
+    # Map your actual column names to our expected names
+    name_col = 'pokémon name' if 'pokémon name' in df.columns else 'pokemon'
+    type1_col = 'typing (primary)'
+    type2_col = 'typing (secondary)'
+    usage_col = 'meta usage (%)' if 'meta usage (%)' in df.columns else 'meta usage (0-100)'
     
-    # Column name mappings (all lowercase)
-    column_mappings = {
-        'name': ['name', 'pokemon', 'pokémon', 'pokémon name'],
-        'type1': ['type1', 'primary type', 'type 1', 'typing (primary)', 'primary_type'],
-        'type2': ['type2', 'secondary type', 'type 2', 'typing (secondary)', 'secondary_type'],
-        'usage': ['usage', 'usage %', 'meta usage (%)', 'meta usage', 'usage_percentage'],
-        'hp': ['hp', 'base stats: hp', 'base hp', 'base_hp'],
-        'atk': ['atk', 'attack', 'base stats: atk', 'base atk', 'base_attack'],
-        'def': ['def', 'defense', 'base stats: def', 'base def', 'base_defense'],
-        'spa': ['spa', 'sp. atk', 'special attack', 'base stats: spa', 'base spa', 'special_attack'],
-        'spd': ['spd', 'sp. def', 'special defense', 'base stats: spd', 'base spd', 'special_defense'],
-        'spe': ['spe', 'speed', 'base stats: spe', 'base spe', 'base_speed']
-    }
-    
-    # Find matching columns
-    found_columns = {}
-    for standard_name, possible_names in column_mappings.items():
-        for possible_name in possible_names:
-            if possible_name in df.columns:
-                found_columns[standard_name] = possible_name
-                break
-    
-    # Validate required columns
-    required_columns = ['name', 'type1']
-    missing_columns = [col for col in required_columns if col not in found_columns]
-    if missing_columns:
-        st.error(f"Missing required columns in threats data: {missing_columns}")
-        st.write("Available columns:", df.columns.tolist())
+    # Basic info - with error handling
+    if name_col not in df.columns:
+        st.error(f"Could not find Pokémon name column in threats data. Available columns: {df.columns.tolist()}")
         return None
     
-    # Process basic info
-    processed['Name'] = df[found_columns['name']].str.strip()
+    processed['Name'] = df[name_col]
     
-    # Process types with extensive cleaning
-    processed['Type1'] = (
-        df[found_columns['type1']]
-        .astype(str)
-        .str.strip()
-        .str.title()
-        .replace(['Na', 'Nan', 'None', 'N/A', ''], None)
-    )
+    if type1_col not in df.columns:
+        st.error(f"Could not find primary type column in threats data. Available columns: {df.columns.tolist()}")
+        return None
     
-    if 'type2' in found_columns:
-        processed['Type2'] = (
-            df[found_columns['type2']]
-            .astype(str)
-            .str.strip()
-            .str.title()
-            .replace(['Na', 'Nan', 'None', 'N/A', ''], None)
-        )
+    processed['Type1'] = df[type1_col].str.strip()
+    
+    if type2_col in df.columns:
+        processed['Type2'] = df[type2_col].replace(['NA', '', 'None', np.nan], None).str.strip()
     else:
         processed['Type2'] = None
     
-    # Process stats with default values
-    stat_columns = ['hp', 'atk', 'def', 'spa', 'spd', 'spe']
-    for stat in stat_columns:
-        if stat in found_columns:
-            processed[stat] = pd.to_numeric(df[found_columns[stat]], errors='coerce').fillna(0)
+    # Base stats - using your exact column names
+    stat_mapping = {
+        'HP': 'base stats: hp',
+        'Atk': 'base stats: atk',
+        'Def': 'base stats: def',
+        'SpA': 'base stats: spa',
+        'SpD': 'base stats: spd',
+        'Spe': 'base stats: spe'
+    }
+    
+    for stat, col_name in stat_mapping.items():
+        if col_name in df.columns:
+            processed[stat] = pd.to_numeric(df[col_name], errors='coerce').fillna(0)
         else:
-            st.warning(f"Could not find {stat} column, using 0 as default")
+            st.warning(f"Could not find {stat} column ({col_name}), using 0 as default")
             processed[stat] = 0
     
-    # Process usage
-    if 'usage' in found_columns:
-        processed['Usage'] = pd.to_numeric(df[found_columns['usage']], errors='coerce').fillna(0.0)
+    # Usage - using your column name
+    if usage_col in df.columns:
+        try:
+            processed['Usage'] = pd.to_numeric(df[usage_col], errors='coerce').fillna(0.0)
+        except Exception as e:
+            st.warning(f"Could not parse usage column: {e}")
+            processed['Usage'] = 0.0
     else:
-        st.warning("No usage column found, defaulting to 0")
+        st.warning(f"No usage column found (tried: {usage_col}), defaulting to 0")
         processed['Usage'] = 0.0
     
     # Tier assignment
-    processed['Tier'] = processed['Usage'].apply(
-        lambda x: 'S' if x >= 80 else 'A' if x >= 60 else 'B' if x >= 30 else 'C'
-    )
+    if 'Tier' in df.columns:
+        processed['Tier'] = df['Tier']
+    else:
+        processed['Tier'] = processed['Usage'].apply(
+            lambda x: 'S' if x >= 80 else 'A' if x >= 60 else 'B' if x >= 30 else 'C'
+        )
     
     return processed
 
