@@ -14,46 +14,37 @@ import re
 def preprocess_all_pokemon_data_for_threats(df):
     """
     Convert Dataset 1 (All Pokémon Data) to threats format for the analyzer
+    Updated to match your specific dataset columns
     """
     processed = pd.DataFrame()
     
     # Basic info
     processed['Name'] = df['Name']
     processed['Type1'] = df['Typing (Primary)']
-    processed['Type2'] = df['Typing (Secondary)'].replace('', None)  # Empty strings to None
+    processed['Type2'] = df['Typing (Secondary)'].replace('NA', None)  # Handle NA values
     
-    # Extract base stats (remove parentheses content if present)
-    def extract_stat(stat_text):
-        if pd.isna(stat_text):
-            return 0
-        # Extract number before parentheses if present
-        match = re.match(r'(\d+)', str(stat_text))
-        return int(match.group(1)) if match else 0
+    # Base stats (directly use numeric values)
+    processed['HP'] = df['Base Stats: HP']
+    processed['Atk'] = df['Base Stats: Atk']
+    processed['Def'] = df['Base Stats: Def']
+    processed['SpA'] = df['Base Stats: SpA']
+    processed['SpD'] = df['Base Stats: SpD']
+    processed['Spe'] = df['Base Stats: Spe']
     
-    processed['HP'] = df['Base Stats: HP'].apply(extract_stat)
-    processed['Atk'] = df['Base Stats: Atk'].apply(extract_stat)
-    processed['Def'] = df['Base Stats: Def'].apply(extract_stat)
-    processed['SpA'] = df['Base Stats: SpA'].apply(extract_stat)
-    processed['SpD'] = df['Base Stats: SpD'].apply(extract_stat)
-    processed['Spe'] = df['Base Stats: Spe'].apply(extract_stat)
-    
-    # Convert Meta Usage to Usage (handle percentage format)
+    # Convert Meta Usage to Usage (simplified since your data is already numeric)
     def extract_usage(usage_text):
         if pd.isna(usage_text):
             return 0.0
         try:
-            # Extract number from percentage or decimal
-            match = re.search(r'(\d+(?:\.\d+)?)', str(usage_text))
-            return float(match.group(1)) if match else 0.0
+            return float(usage_text)  # Direct conversion
         except:
             return 0.0
     
     processed['Usage'] = df['Meta Usage (%)'].apply(extract_usage)
     
-    # Create tier based on usage and role
+    # Create tier based on usage
     def assign_tier(row):
         usage = row['Usage']
-        role = str(row.get('Role(s)', '')).lower()
         
         if usage >= 80:
             return 'S'
@@ -64,20 +55,21 @@ def preprocess_all_pokemon_data_for_threats(df):
         else:
             return 'C'
     
-    processed['Tier'] = df.apply(assign_tier, axis=1)
+    processed['Tier'] = processed.apply(assign_tier, axis=1)
     
     return processed
 
 def preprocess_team_data_for_analyzer(df):
     """
     Convert Dataset 2 (Team data) to team format for the analyzer
+    Works with your team dataset format
     """
     processed = pd.DataFrame()
     
     # Basic info
     processed['Name'] = df['Pokemon']
     processed['Type1'] = df['Typing (Primary)']
-    processed['Type2'] = df['Typing (Secondary)'].replace('', None)
+    processed['Type2'] = df['Typing (Secondary)'].replace('NA', None)
     
     # Base stats
     processed['HP'] = df['Base Stats: HP']
@@ -87,11 +79,11 @@ def preprocess_team_data_for_analyzer(df):
     processed['SpD'] = df['Base Stats: SpD']
     processed['Spe'] = df['Base Stats: Spe']
     
-    # Parse EVs from text format "252 HP/252 Atk/4 SpD" to individual columns
+    # Parse EVs from text format "252 HP/252 Atk/4 SpD"
     def parse_evs(ev_text):
         ev_dict = {'HP': 0, 'Atk': 0, 'Def': 0, 'SpA': 0, 'SpD': 0, 'Spe': 0}
         
-        if pd.isna(ev_text):
+        if pd.isna(ev_text) or ev_text == 'NA':
             return ev_dict
         
         # Split by '/' and parse each part
@@ -127,9 +119,11 @@ def preprocess_team_data_for_analyzer(df):
     for _, row in df.iterrows():
         move_list = []
         for i in range(1, 5):  # Move 1 through Move 4
-            move = row.get(f'Move {i}', '')
-            if pd.notna(move) and move.strip():
-                move_list.append(move.strip())
+            move_col = f'Move {i}'
+            if move_col in df.columns:
+                move = row.get(move_col, '')
+                if pd.notna(move) and str(move).strip() != 'NA':
+                    move_list.append(str(move).strip())
         moves.append(','.join(move_list))
     
     processed['Moves'] = moves
@@ -139,12 +133,13 @@ def preprocess_team_data_for_analyzer(df):
 def detect_data_format(df):
     """
     Detect if uploaded data is in raw format or analyzer format
+    Updated to match your specific column names
     """
     # Check for analyzer format columns
     analyzer_team_cols = ['Name', 'Type1', 'Type2', 'HP', 'Atk', 'Def', 'SpA', 'SpD', 'Spe', 'EV_HP']
     analyzer_threats_cols = ['Name', 'Type1', 'Type2', 'HP', 'Atk', 'Def', 'SpA', 'SpD', 'Spe', 'Usage', 'Tier']
     
-    # Check for raw format columns
+    # Check for raw format columns (your specific columns)
     raw_team_cols = ['Pokemon', 'Typing (Primary)', 'Base Stats: HP', 'EVs']
     raw_threats_cols = ['Name', 'Typing (Primary)', 'Base Stats: HP', 'Meta Usage (%)']
     
@@ -178,6 +173,7 @@ def validate_processed_data(team_df, threats_df):
     threats_valid = all(col in threats_df.columns for col in required_threats_columns)
     
     return team_valid, threats_valid
+
 
 # ========================
 # 2. TYPE CHART AND CONSTANTS
