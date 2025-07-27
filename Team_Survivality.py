@@ -253,9 +253,9 @@ def analyze_speed_tiers(team_df: pd.DataFrame) -> List[Dict]:
     speed_data = []
     for _, row in team_df.iterrows():
         speed_data.append({
-            'Pokemon': row['Pokemon'],
-            'Speed': row['Base Stats: Spe'],
-            'Tier': get_speed_tier(row['Base Stats: Spe'])
+            'Pokemon': row['Name'],
+            'Speed': row['Spe'],
+            'Tier': get_speed_tier(row['Spe'])
         })
     return speed_data
 
@@ -302,11 +302,16 @@ def main():
             }]
             threats_df = pd.DataFrame(sample_threats)
             processed_threats = preprocess_all_pokemon_data_for_threats(threats_df)
+    
     # Main tabs
     tab1, tab2, tab3, tab4 = st.tabs(["🛡️ Team Overview", "⚔️ Threat Analysis", "🎯 Survival Calculator", "🔧 Optimization"])
     
-    with tab1:  # Team Overview tab
+    with tab1:  # Team Overview tab - ONLY uses team_df
         st.header("Team Overview & Weaknesses")
+        
+        if not hasattr(team_df, 'columns'):
+            st.error("Team data not loaded correctly")
+            return
         
         # 1. Display Team Data (with flexible column handling)
         st.subheader("Your Team Composition")
@@ -375,11 +380,12 @@ def main():
         team_types = []
         for _, row in team_df.iterrows():
             types = [row['Typing (Primary)']]
-            if pd.notna(row['Typing (Secondary)']) and row['Typing (Secondary)'] != 'NA':
+            if pd.notna(row.get('Typing (Secondary)']) and row['Typing (Secondary)'] != 'NA':
                 types.append(row['Typing (Secondary)'])
             team_types.append(types)
         
-        weaknesses = analyze_team_weaknesses(team_types, load_type_chart())
+        type_chart = load_type_chart()
+        weaknesses = analyze_team_weaknesses(team_types, type_chart)
         
         if weaknesses:
             weakness_df = pd.DataFrame(list(weaknesses.items()), columns=['Type', 'Weak Members'])
@@ -391,7 +397,7 @@ def main():
         
         # 4. Speed Tier Analysis
         st.subheader("Speed Tier Distribution")
-        speed_data = analyze_speed_tiers(team_df)
+        speed_data = analyze_speed_tiers(processed_team)
         speed_df = pd.DataFrame(speed_data)
         fig = px.scatter(speed_df, x='Pokemon', y='Speed', color='Tier',
                         title="Team Speed Distribution",
@@ -402,8 +408,12 @@ def main():
                      annotation_text="Average Speed")
         st.plotly_chart(fig, use_container_width=True)
     
-    with tab2:
+    with tab2:  # Threat Analysis tab - uses both team_df and threats_df
         st.header("Meta Threat Analysis")
+        
+        if 'threats_df' not in locals():
+            st.warning("Please upload threats data to use this feature")
+            return
         
         # Threat filtering
         col1, col2 = st.columns(2)
@@ -491,6 +501,10 @@ def main():
     
     with tab3:
         st.header("Advanced Survival Calculator")
+        
+        if 'threats_df' not in locals():
+            st.warning("Please upload threats data to use this feature")
+            return
         
         if len(threats_df) > 0:
             # Threat selection
@@ -670,6 +684,10 @@ def main():
     with tab4:
         st.header("Team Optimization Recommendations")
         
+        if 'threats_df' not in locals():
+            st.warning("Please upload threats data to use this feature")
+            return
+        
         # Advanced EV optimization with move power estimation
         st.subheader("🔧 Advanced EV Optimization")
         
@@ -831,8 +849,9 @@ def main():
         # Team composition suggestions
         st.subheader("🎯 Team Composition Advice")
         
+        type_chart = load_type_chart()
         weaknesses = analyze_team_weaknesses(team_df, type_chart)
-        speed_data = analyze_speed_tiers(team_df)
+        speed_data = analyze_speed_tiers(processed_team)
         
         suggestions = []
         
