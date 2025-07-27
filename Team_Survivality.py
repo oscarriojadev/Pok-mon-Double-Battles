@@ -690,62 +690,73 @@ Garchomp,Dragon,Ground,108,130,95,80,85,102,18.7,A""")
     # Main content tabs
     tab1, tab2, tab3, tab4 = st.tabs(["🛡️ Team Overview", "⚔️ Threat Analysis", "🎯 Survival Calculator", "🔧 Optimization"])
     
-    with tab1:
+    with tab1:  # Team Overview tab
         st.header("Team Overview & Weaknesses")
         
-        # Team composition display
-        col1, col2 = st.columns([2, 1])
+        # 1. Display Raw Team Data Exactly As Uploaded
+        st.subheader("Your Team Composition")
+        st.dataframe(team_df[[
+            'Pokemon', 'Typing (Primary)', 'Typing (Secondary)',
+            'Item', 'Ability', 'EVs', 'Nature',
+            'Move 1', 'Move 2', 'Move 3', 'Move 4'
+        ]], use_container_width=True, height=400)
+    
+        # 2. Calculate and Display Team Stats (using raw data)
+        st.subheader("Team Stats Summary")
+        col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.subheader("Your Team")
-            display_df = team_df[['Name', 'Type1', 'Type2', 'HP', 'Atk', 'Def', 'SpA', 'SpD', 'Spe']].copy()
-            display_df['Types'] = display_df['Type1'] + '/' + display_df['Type2'].fillna('')
-            display_df['Types'] = display_df['Types'].str.rstrip('/')
-            st.dataframe(display_df[['Name', 'Types', 'HP', 'Atk', 'Def', 'SpA', 'SpD', 'Spe']], use_container_width=True)
+            avg_hp = team_df['Base Stats: HP'].mean()
+            st.metric("Average HP", f"{avg_hp:.0f}")
         
         with col2:
-            st.subheader("Team Stats")
-            avg_stats = {
-                'Avg HP': int(team_df['HP'].mean()),
-                'Avg Atk': int(team_df['Atk'].mean()),
-                'Avg SpA': int(team_df['SpA'].mean()),
-                'Avg Spe': int(team_df['Spe'].mean())
-            }
-            for stat, value in avg_stats.items():
-                st.metric(stat, value)
+            avg_speed = team_df['Base Stats: Spe'].mean()
+            st.metric("Average Speed", f"{avg_speed:.0f}")
         
-        # Weakness analysis
+        with col3:
+            physical_attackers = len([x for x in team_df['Role'] if 'Physical' in str(x)])
+            st.metric("Physical Attackers", physical_attackers)
+    
+        # 3. Type Weakness Analysis (using raw data)
         st.subheader("Type Weakness Analysis")
-        weaknesses = analyze_team_weaknesses(team_df, type_chart)
+        
+        # Convert raw team data to types list for analysis
+        team_types = []
+        for _, row in team_df.iterrows():
+            types = [row['Typing (Primary)']]
+            if pd.notna(row['Typing (Secondary)']) and row['Typing (Secondary)'] != 'NA':
+                types.append(row['Typing (Secondary)'])
+            team_types.append(types)
+        
+        weaknesses = analyze_team_weaknesses(team_types, load_type_chart())
         
         if weaknesses:
-            # Critical weaknesses
-            critical = {k: v for k, v in weaknesses.items() if v >= 3}
-            if critical:
-                st.error(f"🚨 Critical Shared Weaknesses: {', '.join(critical.keys())}")
-                st.markdown("These types threaten 3+ team members!")
-            
-            # Weakness chart
-            weakness_df = pd.DataFrame(list(weaknesses.items()), columns=['Type', 'Members Weak'])
-            fig = px.bar(weakness_df, x='Type', y='Members Weak', 
+            weakness_df = pd.DataFrame(list(weaknesses.items()), columns=['Type', 'Weak Members'])
+            fig = px.bar(weakness_df, x='Type', y='Weak Members', 
                         title="Team Type Weaknesses",
-                        color='Members Weak',
+                        color='Weak Members',
                         color_continuous_scale='Reds')
             st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.success("✅ No significant type weaknesses detected!")
+    
+        # 4. Speed Tier Analysis (using raw data)
+        st.subheader("Speed Tier Distribution")
         
-        # Speed analysis
-        st.subheader("Speed Tier Analysis")
-        speed_data = analyze_speed_tiers(team_df)
+        speed_data = []
+        for _, row in team_df.iterrows():
+            speed_data.append({
+                'Pokemon': row['Pokemon'],
+                'Speed': row['Base Stats: Spe'],
+                'Tier': get_speed_tier(row['Base Stats: Spe'])
+            })
+        
         speed_df = pd.DataFrame(speed_data)
-        
-        fig = px.scatter(speed_df, x='Name', y='Speed', color='Tier',
-                        title="Team Speed Distribution",
-                        hover_data=['Tier'])
-        fig.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Trick Room Threshold")
-        fig.add_hline(y=100, line_dash="dash", line_color="orange", annotation_text="Average Speed")
-        fig.add_hline(y=120, line_dash="dash", line_color="green", annotation_text="Fast Threshold")
+        fig = px.scatter(speed_df, x='Pokemon', y='Speed', color='Tier',
+                       title="Team Speed Distribution",
+                       hover_data=['Tier'])
+        fig.add_hline(y=70, line_dash="dash", line_color="red", 
+                     annotation_text="Trick Room Threshold")
+        fig.add_hline(y=100, line_dash="dash", line_color="orange", 
+                     annotation_text="Average Speed")
         st.plotly_chart(fig, use_container_width=True)
     
     with tab2:
