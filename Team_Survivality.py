@@ -11,25 +11,66 @@ import re
 # 1. DATA PREPROCESSING FUNCTIONS
 # ========================
 
+def find_column(df, possible_names):
+    """Helper to find the right column from possible names"""
+    for name in possible_names:
+        if name in df.columns:
+            return name
+    return None
+
 def preprocess_all_pokemon_data_for_threats(df):
-    """Process the threats dataset (all Pokémon)"""
+    """Process threats dataset with flexible column names"""
     processed = pd.DataFrame()
     
-    # Basic info
-    processed['Name'] = df['Name']
-    processed['Type1'] = df['Typing (Primary)']
-    processed['Type2'] = df['Typing (Secondary)'].replace('NA', None)
+    # Flexible column name handling
+    name_col = find_column(df, ['Name', 'Pokemon', 'Pokémon', 'Pokémon Name'])
+    type1_col = find_column(df, ['Typing (Primary)', 'Type1', 'Primary Type', 'Type 1'])
+    type2_col = find_column(df, ['Typing (Secondary)', 'Type2', 'Secondary Type', 'Type 2'])
+    usage_col = find_column(df, ['Meta Usage (%)', 'Usage', 'Usage %', 'Meta Usage'])
     
-    # Base stats
-    processed['HP'] = df['Base Stats: HP']
-    processed['Atk'] = df['Base Stats: Atk']
-    processed['Def'] = df['Base Stats: Def']
-    processed['SpA'] = df['Base Stats: SpA']
-    processed['SpD'] = df['Base Stats: SpD']
-    processed['Spe'] = df['Base Stats: Spe']
+    # Basic info
+    if name_col:
+        processed['Name'] = df[name_col]
+    else:
+        st.error("Could not find Pokémon name column in threats data")
+        return None
+    
+    if type1_col:
+        processed['Type1'] = df[type1_col]
+    else:
+        st.error("Could not find primary type column in threats data")
+        return None
+    
+    processed['Type2'] = df[type2_col].replace('NA', None) if type2_col else None
+    
+    # Base stats with flexible column names
+    stat_mapping = {
+        'HP': ['Base Stats: HP', 'HP', 'Base HP'],
+        'Atk': ['Base Stats: Atk', 'Attack', 'Atk', 'Base Atk'],
+        'Def': ['Base Stats: Def', 'Defense', 'Def', 'Base Def'],
+        'SpA': ['Base Stats: SpA', 'Sp. Atk', 'SpA', 'Base SpA'],
+        'SpD': ['Base Stats: SpD', 'Sp. Def', 'SpD', 'Base SpD'],
+        'Spe': ['Base Stats: Spe', 'Speed', 'Spe', 'Base Spe']
+    }
+    
+    for stat, possible_names in stat_mapping.items():
+        col = find_column(df, possible_names)
+        if col:
+            processed[stat] = df[col]
+        else:
+            st.warning(f"Could not find {stat} column, using 0 as default")
+            processed[stat] = 0
     
     # Usage
-    processed['Usage'] = df['Meta Usage (%)'].fillna(0.0)
+    if usage_col:
+        try:
+            processed['Usage'] = pd.to_numeric(df[usage_col], errors='coerce').fillna(0.0)
+        except Exception as e:
+            st.warning(f"Could not parse usage column: {e}")
+            processed['Usage'] = 0.0
+    else:
+        st.warning("No usage column found, defaulting to 0")
+        processed['Usage'] = 0.0
     
     # Tier assignment
     processed['Tier'] = processed['Usage'].apply(
@@ -39,21 +80,45 @@ def preprocess_all_pokemon_data_for_threats(df):
     return processed
 
 def preprocess_team_data_for_analyzer(df):
-    """Process the team dataset"""
+    """Process team dataset with flexible column names"""
     processed = pd.DataFrame()
     
+    # Flexible column name handling
+    name_col = find_column(df, ['Pokemon', 'Pokémon', 'Name', 'Pokémon Name'])
+    type1_col = find_column(df, ['Typing (Primary)', 'Type1', 'Primary Type'])
+    type2_col = find_column(df, ['Typing (Secondary)', 'Type2', 'Secondary Type'])
+    evs_col = find_column(df, ['EVs', 'EV Spread', 'Effort Values'])
+    
     # Basic info
-    processed['Name'] = df['Pokemon']
-    processed['Type1'] = df['Typing (Primary)']
-    processed['Type2'] = df['Typing (Secondary)'].replace('NA', None)
+    if not name_col:
+        st.error("Could not find Pokémon name column in team data")
+        return None
+    processed['Name'] = df[name_col]
+    
+    if not type1_col:
+        st.error("Could not find primary type column in team data")
+        return None
+    processed['Type1'] = df[type1_col]
+    
+    processed['Type2'] = df[type2_col].replace('NA', None) if type2_col else None
     
     # Base stats
-    processed['HP'] = df['Base Stats: HP']
-    processed['Atk'] = df['Base Stats: Atk']
-    processed['Def'] = df['Base Stats: Def']
-    processed['SpA'] = df['Base Stats: SpA']
-    processed['SpD'] = df['Base Stats: SpD']
-    processed['Spe'] = df['Base Stats: Spe']
+    stat_mapping = {
+        'HP': ['Base Stats: HP', 'HP'],
+        'Atk': ['Base Stats: Atk', 'Attack'],
+        'Def': ['Base Stats: Def', 'Defense'],
+        'SpA': ['Base Stats: SpA', 'Sp. Atk'],
+        'SpD': ['Base Stats: SpD', 'Sp. Def'],
+        'Spe': ['Base Stats: Spe', 'Speed']
+    }
+    
+    for stat, possible_names in stat_mapping.items():
+        col = find_column(df, possible_names)
+        if col:
+            processed[stat] = df[col]
+        else:
+            st.warning(f"Could not find {stat} column, using 0 as default")
+            processed[stat] = 0
     
     # Parse EVs
     def parse_evs(ev_text):
@@ -69,29 +134,40 @@ def preprocess_team_data_for_analyzer(df):
                     ev_dict[stat] = int(value)
         return ev_dict
     
-    ev_data = df['EVs'].apply(parse_evs)
-    processed['EV_HP'] = [ev['HP'] for ev in ev_data]
-    processed['EV_Atk'] = [ev['Atk'] for ev in ev_data]
-    processed['EV_Def'] = [ev['Def'] for ev in ev_data]
-    processed['EV_SpA'] = [ev['SpA'] for ev in ev_data]
-    processed['EV_SpD'] = [ev['SpD'] for ev in ev_data]
-    processed['EV_Spe'] = [ev['Spe'] for ev in ev_data]
+    if evs_col:
+        ev_data = df[evs_col].apply(parse_evs)
+        processed['EV_HP'] = [ev['HP'] for ev in ev_data]
+        processed['EV_Atk'] = [ev['Atk'] for ev in ev_data]
+        processed['EV_Def'] = [ev['Def'] for ev in ev_data]
+        processed['EV_SpA'] = [ev['SpA'] for ev in ev_data]
+        processed['EV_SpD'] = [ev['SpD'] for ev in ev_data]
+        processed['EV_Spe'] = [ev['Spe'] for ev in ev_data]
+    else:
+        st.warning("No EVs column found, using 0 for all EVs")
+        processed['EV_HP'] = 0
+        processed['EV_Atk'] = 0
+        processed['EV_Def'] = 0
+        processed['EV_SpA'] = 0
+        processed['EV_SpD'] = 0
+        processed['EV_Spe'] = 0
     
     # Other info
-    processed['Item'] = df['Item']
-    processed['Ability'] = df['Ability']
+    item_col = find_column(df, ['Item', 'Held Item', 'Equipment'])
+    ability_col = find_column(df, ['Ability', 'Abilities'])
+    
+    processed['Item'] = df[item_col] if item_col else None
+    processed['Ability'] = df[ability_col] if ability_col else None
     
     # Combine moves
     moves = []
     for _, row in df.iterrows():
         move_list = []
         for i in range(1, 5):
-            move_col = f'Move {i}'
-            if move_col in df.columns:
-                move = row.get(move_col, '')
-                if pd.notna(move) and str(move).strip() != 'NA':
-                    move_list.append(str(move).strip())
+            move_col = find_column(df, [f'Move {i}', f'Move{i}', f'Attack {i}'])
+            if move_col and pd.notna(row[move_col]) and str(row[move_col]).strip() != 'NA':
+                move_list.append(str(row[move_col]).strip())
         moves.append(','.join(move_list))
+    
     processed['Moves'] = moves
     
     return processed
@@ -188,28 +264,7 @@ def analyze_speed_tiers(team_df: pd.DataFrame) -> List[Dict]:
 # ========================
 
 def main():
-    st.set_page_config(page_title="VGC Team Analyzer", layout="wide", initial_sidebar_state="expanded")
-    
-    # Custom CSS
-    st.markdown("""
-    <style>
-    .metric-card {
-        background-color: #f0f2f6;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #ff6b6b;
-    }
-    .success-card {
-        background-color: #d4edda;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #28a745;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    st.title("🎮 VGC Team Analyzer")
-    st.markdown("**Comprehensive Pokémon VGC team analysis**")
+    st.set_page_config(page_title="VGC Team Analyzer", layout="wide")
     
     # Sidebar for data upload
     with st.sidebar:
@@ -217,8 +272,9 @@ def main():
         team_file = st.file_uploader("Upload Team Data (CSV)", type=["csv"])
         threats_file = st.file_uploader("Upload Threats Data (CSV)", type=["csv"])
         
-        if team_file is not None:
+        if team_file:
             team_df = pd.read_csv(team_file)
+            st.write("Team columns:", team_df.columns.tolist())
             processed_team = preprocess_team_data_for_analyzer(team_df)
         else:
             st.warning("Using sample team data")
@@ -232,8 +288,9 @@ def main():
             team_df = pd.DataFrame(sample_team)
             processed_team = preprocess_team_data_for_analyzer(team_df)
         
-        if threats_file is not None:
+        if threats_file:
             threats_df = pd.read_csv(threats_file)
+            st.write("Threats columns:", threats_df.columns.tolist())
             processed_threats = preprocess_all_pokemon_data_for_threats(threats_df)
         else:
             st.warning("Using sample threats data")
@@ -245,7 +302,6 @@ def main():
             }]
             threats_df = pd.DataFrame(sample_threats)
             processed_threats = preprocess_all_pokemon_data_for_threats(threats_df)
-    
     # Main tabs
     tab1, tab2, tab3, tab4 = st.tabs(["🛡️ Team Overview", "⚔️ Threat Analysis", "🎯 Survival Calculator", "🔧 Optimization"])
     
