@@ -259,6 +259,162 @@ def analyze_speed_tiers(team_df: pd.DataFrame) -> List[Dict]:
         })
     return speed_data
 
+def estimate_move_powers(pokemon):
+    """Estimate possible moves a Pokémon might have based on its stats and typing"""
+    moves = {
+        'Physical': [],
+        'Special': []
+    }
+    
+    # Physical moves
+    if pokemon['Atk'] >= pokemon['SpA']:
+        # STAB moves
+        moves['Physical'].append((
+            f"{pokemon['Type1']} Move",
+            [80, 100, 120],  # Typical BP range
+            pokemon['Type1']
+        ))
+        if pd.notna(pokemon.get('Type2')):
+            moves['Physical'].append((
+                f"{pokemon['Type2']} Move",
+                [80, 100, 120],
+                pokemon['Type2']
+            ))
+        
+        # Coverage moves
+        moves['Physical'].append((
+            "Coverage Move",
+            [70, 90],
+            "Normal"  # Neutral coverage
+        ))
+    
+    # Special moves
+    if pokemon['SpA'] >= pokemon['Atk'] * 0.8:  # If special attack is at least 80% of physical
+        # STAB moves
+        moves['Special'].append((
+            f"{pokemon['Type1']} Move",
+            [80, 100, 120],
+            pokemon['Type1']
+        ))
+        if pd.notna(pokemon.get('Type2')):
+            moves['Special'].append((
+                f"{pokemon['Type2']} Move",
+                [80, 100, 120],
+                pokemon['Type2']
+            ))
+        
+        # Coverage moves
+        moves['Special'].append((
+            "Coverage Move",
+            [70, 90],
+            "Normal"
+        ))
+    
+    return moves
+
+def simulate_damage_range(attacker, defender, power, move_type, category, type_chart):
+    """Simulate damage range for a move"""
+    # Calculate stats with EVs
+    if category == 'Physical':
+        attack_stat = calculate_stats_with_evs(attacker['Atk'], attacker.get('EV_Atk', 0))
+        defense_stat = calculate_stats_with_evs(defender['Def'], defender.get('EV_Def', 0))
+    else:  # Special
+        attack_stat = calculate_stats_with_evs(attacker['SpA'], attacker.get('EV_SpA', 0))
+        defense_stat = calculate_stats_with_evs(defender['SpD'], defender.get('EV_SpD', 0))
+    
+    # Calculate HP
+    defender_hp = calculate_hp_with_evs(defender['HP'], defender.get('EV_HP', 0))
+    
+    # Type effectiveness
+    defender_types = [defender['Type1']]
+    if pd.notna(defender.get('Type2')):
+        defender_types.append(defender['Type2'])
+    effectiveness = calculate_type_effectiveness(move_type, defender_types, type_chart)
+    
+    # Damage calculation (simplified)
+    damage = (((2 * 50 / 5 + 2) * power * attack_stat / defense_stat) / 50 + 2)
+    
+    # Apply modifiers
+    min_dmg = math.floor(damage * 0.85 * effectiveness)  # Minimum roll
+    max_dmg = math.floor(damage * 1.0 * effectiveness)   # Maximum roll
+    
+    return min_dmg, max_dmg, defender_hp
+
+def analyze_comprehensive_threats(team_df, threats_df, type_chart):
+    """Analyze threats against the team with comprehensive move estimation"""
+    results = []
+    
+    for _, threat in threats_df.iterrows():
+        threat_data = {
+            'Threat': threat['Name'],
+            'Types': f"{threat['Type1']}{f'/{threat["Type2"]}' if pd.notna(threat.get('Type2')) else ''}",
+            'Usage %': threat.get('Usage', 0),
+            'OHKO Count': 0,
+            '2HKO Count': 0,
+            'Max Damage %': 0,
+            'Most Dangerous Move': '',
+            'Worst Matchup': ''
+        }
+        
+        estimated_moves = estimate_move_powers(threat)
+        max_damage_pct = 0
+        worst_move = ''
+        worst_matchup = ''
+        
+        for category, moves in estimated_moves.items():
+            for move_name, power_range, move_type in moves:
+                for power in power_range:
+                    for _, member in team_df.iterrows():
+                        min_dmg, max_dmg, defender_hp = simulate_damage_range(
+                            threat, member, power, move_type, category, type_chart
+                        )
+                        
+                        damage_pct = (max_dmg / defender_hp) * 100
+                        
+                        # Track worst case scenario
+                        if damage_pct > max_damage_pct:
+                            max_damage_pct = damage_pct
+                            worst_move = f"{move_name} ({power}BP)"
+                            worst_matchup = member['Name']
+                        
+                        # Count OHKOs and 2HKOs
+                        if max_dmg >= defender_hp:
+                            threat_data['OHKO Count'] += 1
+                        elif max_dmg >= defender_hp * 0.5:
+                            threat_data['2HKO Count'] += 1
+        
+        threat_data['Max Damage %'] = max_damage_pct
+        threat_data['Most Dangerous Move'] = worst_move
+        threat_data['Worst Matchup'] = worst_matchup
+        
+        results.append(threat_data)
+    
+    return pd.DataFrame(results)
+
+def get_move_example(type_name):
+    """Get example move for a given type"""
+    examples = {
+        'Normal': 'Body Slam',
+        'Fire': 'Flamethrower',
+        'Water': 'Hydro Pump',
+        'Electric': 'Thunderbolt',
+        'Grass': 'Energy Ball',
+        'Ice': 'Ice Beam',
+        'Fighting': 'Close Combat',
+        'Poison': 'Sludge Bomb',
+        'Ground': 'Earthquake',
+        'Flying': 'Brave Bird',
+        'Psychic': 'Psychic',
+        'Bug': 'Bug Buzz',
+        'Rock': 'Rock Slide',
+        'Ghost': 'Shadow Ball',
+        'Dragon': 'Draco Meteor',
+        'Dark': 'Dark Pulse',
+        'Steel': 'Flash Cannon',
+        'Fairy': 'Moonblast'
+    }
+    return examples.get(type_name, 'Standard Move')
+
 # ========================
 # 3. STREAMLIT APP
 # ========================
@@ -547,7 +703,7 @@ def main():
         fig.add_hline(y=50, line_dash="dash", line_color="orange", 
                      annotation_text="2HKO Threshold")
         st.plotly_chart(fig, use_container_width=True)
-        
+    
     with tab3:
         st.header("Advanced Survival Calculator")
         
