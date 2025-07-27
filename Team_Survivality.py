@@ -12,75 +12,92 @@ import re
 # ========================
 
 def find_column(df, possible_names):
-    """Helper to find the right column from possible names"""
+    """Helper to find the right column from possible names (case-insensitive)"""
+    df_columns_lower = [str(col).lower() for col in df.columns]
     for name in possible_names:
-        if name in df.columns:
-            return name
+        name_lower = str(name).lower()
+        if name_lower in df_columns_lower:
+            return df.columns[df_columns_lower.index(name_lower)]
     return None
 
 def preprocess_all_pokemon_data_for_threats(df):
-    """Process threats dataset with your specific column names"""
+    """Process threats dataset with extensive column name flexibility"""
+    if df.empty:
+        st.error("Empty DataFrame provided to preprocess_all_pokemon_data_for_threats")
+        return None
+
     processed = pd.DataFrame()
     
-    # Map your actual column names to our expected names
-    name_col = 'pokémon name' if 'pokémon name' in df.columns else 'pokemon'
-    type1_col = 'typing (primary)'
-    type2_col = 'typing (secondary)'
-    usage_col = 'meta usage (%)' if 'meta usage (%)' in df.columns else 'meta usage (0-100)'
+    # Column name mappings with many variations
+    name_col = find_column(df, ['Name', 'Pokemon', 'Pokémon', 'Pokémon Name', 'pokemon', 'name'])
+    type1_col = find_column(df, ['Typing (Primary)', 'Type1', 'Primary Type', 'Type 1', 'type1', 'primary type'])
+    type2_col = find_column(df, ['Typing (Secondary)', 'Type2', 'Secondary Type', 'Type 2', 'type2', 'secondary type'])
+    usage_col = find_column(df, ['Meta Usage (%)', 'Usage', 'Usage %', 'Meta Usage', 'usage'])
     
-    # Basic info - with error handling
-    if name_col not in df.columns:
-        st.error(f"Could not find Pokémon name column in threats data. Available columns: {df.columns.tolist()}")
+    # Basic info with validation
+    if not name_col:
+        st.error("Could not find Pokémon name column in threats data")
+        st.write("Available columns:", df.columns.tolist())
         return None
     
-    processed['Name'] = df[name_col]
+    processed['Name'] = df[name_col].astype(str).str.strip()
     
-    if type1_col not in df.columns:
+    if not type1_col:
         st.error(f"Could not find primary type column in threats data. Available columns: {df.columns.tolist()}")
         return None
     
-    processed['Type1'] = df[type1_col].str.strip()
+    processed['Type1'] = (
+        df[type1_col]
+        .astype(str)
+        .str.strip()
+        .str.title()
+        .replace(['Na', 'Nan', 'None', 'N/A', ''], None)
+    )
     
-    if type2_col in df.columns:
-        processed['Type2'] = df[type2_col].replace(['NA', '', 'None', np.nan], None).str.strip()
+    if type2_col:
+        processed['Type2'] = (
+            df[type2_col]
+            .astype(str)
+            .str.strip()
+            .str.title()
+            .replace(['Na', 'Nan', 'None', 'N/A', ''], None)
+        )
     else:
         processed['Type2'] = None
     
-    # Base stats - using your exact column names
+    # Base stats with flexible column names
     stat_mapping = {
-        'HP': 'base stats: hp',
-        'Atk': 'base stats: atk',
-        'Def': 'base stats: def',
-        'SpA': 'base stats: spa',
-        'SpD': 'base stats: spd',
-        'Spe': 'base stats: spe'
+        'HP': ['Base Stats: HP', 'HP', 'Base HP'],
+        'Atk': ['Base Stats: Atk', 'Attack', 'Atk', 'Base Atk'],
+        'Def': ['Base Stats: Def', 'Defense', 'Def', 'Base Def'],
+        'SpA': ['Base Stats: SpA', 'Sp. Atk', 'SpA', 'Base SpA'],
+        'SpD': ['Base Stats: SpD', 'Sp. Def', 'SpD', 'Base SpD'],
+        'Spe': ['Base Stats: Spe', 'Speed', 'Spe', 'Base Spe']
     }
     
-    for stat, col_name in stat_mapping.items():
-        if col_name in df.columns:
-            processed[stat] = pd.to_numeric(df[col_name], errors='coerce').fillna(0)
+    for stat, possible_names in stat_mapping.items():
+        col = find_column(df, possible_names)
+        if col:
+            processed[stat] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         else:
-            st.warning(f"Could not find {stat} column ({col_name}), using 0 as default")
+            st.warning(f"Could not find {stat} column, using 0 as default")
             processed[stat] = 0
     
-    # Usage - using your column name
-    if usage_col in df.columns:
+    # Usage data
+    if usage_col:
         try:
             processed['Usage'] = pd.to_numeric(df[usage_col], errors='coerce').fillna(0.0)
         except Exception as e:
             st.warning(f"Could not parse usage column: {e}")
             processed['Usage'] = 0.0
     else:
-        st.warning(f"No usage column found (tried: {usage_col}), defaulting to 0")
+        st.warning("No usage column found, defaulting to 0")
         processed['Usage'] = 0.0
     
     # Tier assignment
-    if 'Tier' in df.columns:
-        processed['Tier'] = df['Tier']
-    else:
-        processed['Tier'] = processed['Usage'].apply(
-            lambda x: 'S' if x >= 80 else 'A' if x >= 60 else 'B' if x >= 30 else 'C'
-        )
+    processed['Tier'] = processed['Usage'].apply(
+        lambda x: 'S' if x >= 80 else 'A' if x >= 60 else 'B' if x >= 30 else 'C'
+    )
     
     return processed
 
@@ -346,35 +363,21 @@ def simulate_damage_range(attacker, defender, power, move_type, category, type_c
     return min_dmg, max_dmg, defender_hp
 
 def analyze_comprehensive_threats(team_df, threats_df, type_chart):
-    """Analyze threats against the team with comprehensive validation"""
+    """Analyze threats against the team with comprehensive move estimation"""
+    results = []
+    
     # Validate inputs
     if team_df.empty or threats_df.empty:
         st.error("Empty DataFrame provided to analyze_comprehensive_threats")
         return pd.DataFrame()
     
-    # Create empty result with expected columns
-    empty_result = pd.DataFrame(columns=[
-        'Threat', 'Types', 'Usage %', 'OHKO Count', 
-        '2HKO Count', 'Max Damage %', 'Most Dangerous Move', 'Worst Matchup'
-    ])
-    
-    # Check required columns in threats_df
-    required_threat_columns = ['Name', 'Type1']
-    missing_threat_columns = [col for col in required_threat_columns if col not in threats_df.columns]
-    if missing_threat_columns:
-        st.error(f"Threats data missing required columns: {missing_threat_columns}")
-        st.write("Available columns in threats data:", threats_df.columns.tolist())
-        return empty_result
-    
-    # Check required columns in team_df
-    required_team_columns = ['Name', 'Type1', 'HP', 'Atk', 'Def', 'SpA', 'SpD', 'Spe']
-    missing_team_columns = [col for col in required_team_columns if col not in team_df.columns]
-    if missing_team_columns:
-        st.error(f"Team data missing required columns: {missing_team_columns}")
-        st.write("Available columns in team data:", team_df.columns.tolist())
-        return empty_result
-    
-    results = []
+    # Check required columns
+    required_columns = ['Name', 'Type1']
+    for col in required_columns:
+        if col not in threats_df.columns:
+            st.error(f"Required column '{col}' missing from threats data")
+            st.write("Available columns:", threats_df.columns.tolist())
+            return pd.DataFrame()
     
     for _, threat in threats_df.iterrows():
         try:
@@ -386,7 +389,7 @@ def analyze_comprehensive_threats(team_df, threats_df, type_chart):
                 st.warning(f"Skipping threat {threat_name} - missing Type1")
                 continue
                 
-            type2 = threat.get('Type2') if 'Type2' in threats_df.columns and pd.notna(threat.get('Type2')) else None
+            type2 = threat.get('Type2', None)
             types_display = f"{type1}{f'/{type2}' if type2 else ''}"
             
             threat_data = {
@@ -400,35 +403,44 @@ def analyze_comprehensive_threats(team_df, threats_df, type_chart):
                 'Worst Matchup': ''
             }
             
-            # Skip if threat is missing essential stats
-            required_stats = ['Atk', 'SpA']
-            if not all(stat in threat and pd.notna(threat.get(stat)) for stat in required_stats):
-                st.warning(f"Skipping threat {threat_name} - missing attack stats")
-                continue
-                
             estimated_moves = estimate_move_powers(threat)
+            max_damage_pct = 0
+            worst_move = ''
+            worst_matchup = ''
             
-            for _, member in team_df.iterrows():
-                try:
-                    member_name = member.get('Name', 'Unknown')
-                    if pd.isna(member.get('Type1')):
-                        st.warning(f"Skipping team member {member_name} - missing Type1")
-                        continue
-                        
-                    # Rest of your analysis logic...
-                    # [Keep your existing damage calculation code here]
-                    
-                except Exception as member_error:
-                    st.warning(f"Error analyzing {threat_name} vs {member_name}: {str(member_error)}")
-                    continue
-                    
+            for category, moves in estimated_moves.items():
+                for move_name, power_range, move_type in moves:
+                    for power in power_range:
+                        for _, member in team_df.iterrows():
+                            min_dmg, max_dmg, defender_hp = simulate_damage_range(
+                                threat, member, power, move_type, category, type_chart
+                            )
+                            
+                            damage_pct = (max_dmg / defender_hp) * 100
+                            
+                            # Track worst case scenario
+                            if damage_pct > max_damage_pct:
+                                max_damage_pct = damage_pct
+                                worst_move = f"{move_name} ({power}BP)"
+                                worst_matchup = member['Name']
+                            
+                            # Count OHKOs and 2HKOs
+                            if max_dmg >= defender_hp:
+                                threat_data['OHKO Count'] += 1
+                            elif max_dmg >= defender_hp * 0.5:
+                                threat_data['2HKO Count'] += 1
+            
+            threat_data['Max Damage %'] = max_damage_pct
+            threat_data['Most Dangerous Move'] = worst_move
+            threat_data['Worst Matchup'] = worst_matchup
+            
             results.append(threat_data)
             
-        except Exception as threat_error:
-            st.error(f"Error processing threat {threat_name}: {str(threat_error)}")
+        except Exception as e:
+            st.warning(f"Error processing threat {threat.get('Name', 'unknown')}: {str(e)}")
             continue
     
-    return pd.DataFrame(results) if results else empty_result
+    return pd.DataFrame(results)
 
 def get_move_example(type_name):
     """Get example move for a given type"""
@@ -485,8 +497,10 @@ def main():
         
         if threats_file:
             threats_df = pd.read_csv(threats_file)
-            st.write("Threats columns:", threats_df.columns.tolist())
+            st.write("Raw threats columns:", threats_df.columns.tolist())
             processed_threats = preprocess_all_pokemon_data_for_threats(threats_df)
+            if processed_threats is not None:
+                st.write("Processed threats columns:", processed_threats.columns.tolist())
         else:
             st.warning("Using sample threats data")
             sample_threats = [{
@@ -498,85 +512,62 @@ def main():
             threats_df = pd.DataFrame(sample_threats)
             processed_threats = preprocess_all_pokemon_data_for_threats(threats_df)
     
-    # Main tabs
+    # Ensure we have valid data before proceeding
+    if processed_threats is None:
+        st.error("Failed to process threats data. Please check your threats data file.")
+        return
+    
+    # Use the processed data throughout the app
+    threats_df = processed_threats
+    
+        # Main tabs
     tab1, tab2, tab3, tab4 = st.tabs(["🛡️ Team Overview", "⚔️ Threat Analysis", "🎯 Survival Calculator", "🔧 Optimization"])
     
-    with tab1:  # Team Overview tab - ONLY uses team_df
+    with tab1:  # Team Overview tab
         st.header("Team Overview & Weaknesses")
         
-        if not hasattr(team_df, 'columns'):
+        if not hasattr(processed_team, 'columns'):
             st.error("Team data not loaded correctly")
             return
         
-        # 1. Display Team Data (with flexible column handling)
+        # 1. Display Team Data
         st.subheader("Your Team Composition")
-        
-        # Define columns we want to show and their possible names
         display_columns = {
-            'Pokemon': ['Pokemon', 'Name', 'Pokémon'],
-            'Primary Type': ['Typing (Primary)', 'Type1', 'Primary Type'],
-            'Secondary Type': ['Typing (Secondary)', 'Type2', 'Secondary Type'],
-            'Item': ['Item', 'Held Item'],
-            'Ability': ['Ability', 'Abilities'],
-            'EVs': ['EVs', 'EV Spread'],
-            'Nature': ['Nature'],  # This is optional
-            'Move 1': ['Move 1', 'Move1'],
-            'Move 2': ['Move 2', 'Move2'],
-            'Move 3': ['Move 3', 'Move3'],
-            'Move 4': ['Move 4', 'Move4']
+            'Pokemon': 'Name',
+            'Primary Type': 'Type1',
+            'Secondary Type': 'Type2',
+            'Item': 'Item',
+            'Ability': 'Ability',
+            'Moves': 'Moves'
         }
         
-        # Find which columns are actually available
-        available_columns = {}
-        for display_name, possible_names in display_columns.items():
-            for name in possible_names:
-                if name in team_df.columns:
-                    available_columns[display_name] = name
-                    break
-        
-        # Show available columns
-        if available_columns:
-            st.dataframe(team_df[list(available_columns.values())].rename(
-                columns={v: k for k, v in available_columns.items()}
-            ), use_container_width=True)
-        else:
-            st.error("Could not find any team data columns to display")
+        display_df = processed_team[[col for col in display_columns.values() if col in processed_team.columns]]
+        display_df.columns = [k for k, v in display_columns.items() if v in processed_team.columns]
+        st.dataframe(display_df, use_container_width=True)
         
         # 2. Team Stats Summary
         st.subheader("Team Stats Summary")
         cols = st.columns(3)
         
         with cols[0]:
-            hp_col = find_column(team_df, ['Base Stats: HP', 'HP'])
-            if hp_col:
-                avg_hp = team_df[hp_col].mean()
-                st.metric("Average HP", f"{avg_hp:.0f}")
-            else:
-                st.warning("HP data not available")
+            avg_hp = processed_team['HP'].mean()
+            st.metric("Average HP", f"{avg_hp:.0f}")
         
         with cols[1]:
-            spe_col = find_column(team_df, ['Base Stats: Spe', 'Spe', 'Speed'])
-            if spe_col:
-                avg_speed = team_df[spe_col].mean()
-                st.metric("Average Speed", f"{avg_speed:.0f}")
-            else:
-                st.warning("Speed data not available")
+            avg_speed = processed_team['Spe'].mean()
+            st.metric("Average Speed", f"{avg_speed:.0f}")
         
         with cols[2]:
-            role_col = find_column(team_df, ['Role', 'Roles'])
-            if role_col:
-                physical_count = sum('Physical' in str(x) for x in team_df[role_col])
-                st.metric("Physical Attackers", physical_count)
-            else:
-                st.warning("Role data not available")
+            physical_count = sum(processed_team['Atk'] >= processed_team['SpA'])
+            st.metric("Physical Attackers", physical_count)
         
         # 3. Type Weakness Analysis
         st.subheader("Type Weakness Analysis")
         team_types = []
-        for _, row in team_df.iterrows():
-            types = [row['Typing (Primary)']]
-            if pd.notna(row.get('Typing (Secondary)')) and row['Typing (Secondary)'] != 'NA':
-                types.append(row['Typing (Secondary)'])
+        for _, row in processed_team.iterrows():
+            types = [row['Type1']]
+            if pd.notna(row.get('Type2')):
+                types.append(row['Type2'])
             team_types.append(types)
         
         type_chart = load_type_chart()
@@ -603,25 +594,18 @@ def main():
                      annotation_text="Average Speed")
         st.plotly_chart(fig, use_container_width=True)
     
-    with tab2:  # Threat Analysis tab - uses both team_df and threats_df
+    with tab2:  # Threat Analysis tab
         st.header("Meta Threat Analysis")
         
-        # Check if threats data is loaded
-        if 'threats_df' not in locals():
+        if threats_df.empty:
             st.warning("Please upload threats data to use this feature")
             return
         
         # Ensure we have the required columns
-        if 'Tier' not in threats_df.columns:
-            if 'Usage' in threats_df.columns:
-                # Create Tier column based on Usage if it doesn't exist
-                threats_df['Tier'] = threats_df['Usage'].apply(
-                    lambda x: 'S' if x >= 80 else 'A' if x >= 60 else 'B' if x >= 30 else 'C'
-                )
-            else:
-                # If no Usage column, create default Tier
-                st.warning("No 'Usage' column found - assigning default tiers")
-                threats_df['Tier'] = 'B'  # Default to mid-tier
+        if 'Tier' not in threats_df.columns and 'Usage' in threats_df.columns:
+            threats_df['Tier'] = threats_df['Usage'].apply(
+                lambda x: 'S' if x >= 80 else 'A' if x >= 60 else 'B' if x >= 30 else 'C'
+            )
         
         # Threat filtering UI
         col1, col2 = st.columns(2)
@@ -646,33 +630,26 @@ def main():
                 help="Filter by threat tier (S=highest usage)"
             )
         
-        # Filter threats based on selections
+        # Filter threats
         filter_conditions = []
-        
         if 'Usage' in threats_df.columns:
             filter_conditions.append(threats_df['Usage'] >= min_usage)
-        
         if selected_tiers:
             filter_conditions.append(threats_df['Tier'].isin(selected_tiers))
         
-        if filter_conditions:
-            filtered_threats = threats_df[np.logical_and.reduce(filter_conditions)]
-        else:
-            filtered_threats = threats_df.copy()
+        filtered_threats = threats_df[np.logical_and.reduce(filter_conditions)] if filter_conditions else threats_df
         
         if len(filtered_threats) == 0:
             st.warning("No threats match your filters. Try adjusting criteria.")
             return
         
-        # Analyze matchups with comprehensive move estimation
-        threat_analysis = analyze_comprehensive_threats(team_df, filtered_threats, load_type_chart())
+        # Analyze matchups
+        threat_analysis = analyze_comprehensive_threats(processed_team, filtered_threats, load_type_chart())
         
         # Critical threats display
         ohko_threats = threat_analysis[threat_analysis['OHKO Count'] >= 1]
         if len(ohko_threats) > 0:
             st.error(f"🚨 Critical Threat Warning: {len(ohko_threats)} threats can OHKO your team!")
-            
-            # Show OHKO threats in detail
             st.dataframe(
                 ohko_threats[['Threat', 'Types', 'Usage %', 'OHKO Count', 'Most Dangerous Move', 'Worst Matchup']].round(1),
                 use_container_width=True,
@@ -684,10 +661,9 @@ def main():
         if len(twohko_threats) > 0:
             st.warning(f"⚠️ Warning: {len(twohko_threats)} threats can 2HKO most of your team")
         
-        # Full analysis with enhanced columns
+        # Full analysis
         st.subheader("Complete Threat Assessment")
         
-        # Enhanced styling for the new columns
         def style_threat_analysis(val):
             if isinstance(val, (int, float)):
                 if val >= 100:  # OHKO range
@@ -720,7 +696,7 @@ def main():
         
         st.dataframe(styled_df, use_container_width=True)
         
-        # Enhanced threat visualization
+        # Threat visualization
         fig = px.scatter(
             threat_analysis, 
             x='Usage %' if 'Usage %' in threat_analysis.columns else 'Tier',
@@ -746,16 +722,27 @@ def main():
     with tab3:
         st.header("Advanced Survival Calculator")
         
-        if 'threats_df' not in locals():
+        if threats_df.empty:
             st.warning("Please upload threats data to use this feature")
             return
         
-        if len(threats_df) > 0:
-            # Threat selection
-            selected_threat_name = st.selectbox("Select Threat to Analyze", threats_df['Name'].unique())
+        # Threat selection with validation
+        try:
+            available_threats = threats_df['Name'].unique()
+            if len(available_threats) == 0:
+                st.error("No threats available in the data")
+                return
+                
+            selected_threat_name = st.selectbox("Select Threat to Analyze", available_threats)
             threat = threats_df[threats_df['Name'] == selected_threat_name].iloc[0]
             
-            st.markdown(f"### Comprehensive Analysis vs {threat['Name']} ({threat['Type1']}{f'/{threat["Type2"]}' if pd.notna(threat.get('Type2')) else ''})")
+            # Safe display of threat info
+            threat_name = threat.get('Name', 'Unknown Threat')
+            type1 = threat.get('Type1', 'Unknown')
+            type2 = threat.get('Type2', '')
+            types_display = f"{type1}{f'/{type2}' if type2 else ''}"
+            
+            st.markdown(f"### Comprehensive Analysis vs {threat_name} ({types_display})")
             
             # Get all estimated moves for this threat
             estimated_moves = estimate_move_powers(threat)
@@ -783,7 +770,7 @@ def main():
                         results_for_move = []
                         for power in power_range:
                             move_results = []
-                            for _, member in team_df.iterrows():
+                            for _, member in processed_team.iterrows():
                                 min_dmg, max_dmg, defender_hp = simulate_damage_range(
                                     threat, member, power, move_type, 'Physical', type_chart
                                 )
@@ -801,7 +788,8 @@ def main():
                                     survival_num = (1 - max_percent/100) * 100
                                     survival = f"✅ {survival_num:.1f}%+ HP"
                                 
-                                type_eff = calculate_type_effectiveness(move_type, [member['Type1'], member.get('Type2')], type_chart)
+                                type_eff = calculate_type_effectiveness(move_type, 
+                                    [member['Type1'], member.get('Type2')], type_chart)
                                 
                                 move_results.append({
                                     'Pokémon': member['Name'],
@@ -831,7 +819,7 @@ def main():
                         results_for_move = []
                         for power in power_range:
                             move_results = []
-                            for _, member in team_df.iterrows():
+                            for _, member in processed_team.iterrows():
                                 min_dmg, max_dmg, defender_hp = simulate_damage_range(
                                     threat, member, power, move_type, 'Special', type_chart
                                 )
@@ -846,7 +834,8 @@ def main():
                                 else:
                                     survival = f"✅ {(1 - max_percent/100)*100:.1f}%+ HP"
                                 
-                                type_eff = calculate_type_effectiveness(move_type, [member['Type1'], member.get('Type2')], type_chart)
+                                type_eff = calculate_type_effectiveness(move_type, 
+                                    [member['Type1'], member.get('Type2')], type_chart)
                                 
                                 move_results.append({
                                     'Pokémon': member['Name'],
@@ -872,7 +861,7 @@ def main():
                 if all_results:
                     # Find the most dangerous move for each team member
                     summary_results = []
-                    for _, member in team_df.iterrows():
+                    for _, member in processed_team.iterrows():
                         member_results = [r for r in all_results if r['Pokémon'] == member['Name']]
                         
                         # Find move that deals most damage
@@ -881,7 +870,7 @@ def main():
                         
                         summary_results.append({
                             'Your Pokémon': member['Name'],
-                            'Types': f"{member['Type1']}{f'/{member["Type2"]}' if pd.notna(member.get('Type2')) else ''}",
+                            'Types': f"{member['Type1']}{f'/{member['Type2']}' if pd.notna(member.get('Type2')) else ''}",
                             'Most Dangerous Move': max_damage_result['Move'],
                             'Worst Damage %': max_damage_result['Damage %'],
                             'Survival Status': max_damage_result['Survival'],
@@ -903,7 +892,7 @@ def main():
                     
                     fig = px.bar(damage_viz_data, x='Pokémon', y='Max Damage %', 
                                hover_data=['Move'],
-                               title=f"Worst-Case Damage from {threat['Name']}",
+                               title=f"Worst-Case Damage from {threat_name}",
                                color='Max Damage %',
                                color_continuous_scale='Reds')
                     fig.add_hline(y=100, line_dash="dash", line_color="red", annotation_text="OHKO Threshold")
@@ -916,136 +905,134 @@ def main():
                     
                     col1, col2, col3 = st.columns(3)
                     with col1:
-                        st.metric("OHKO Potential", f"{ohko_count}/6", delta=f"{ohko_count} members")
+                        st.metric("OHKO Potential", f"{ohko_count}/{len(processed_team)}", delta=f"{ohko_count} members")
                     with col2:
-                        st.metric("2HKO Potential", f"{twohko_count}/6", delta=f"{twohko_count} members")  
+                        st.metric("2HKO Potential", f"{twohko_count}/{len(processed_team)}", delta=f"{twohko_count} members")  
                     with col3:
-                        safe_count = 6 - ohko_count - twohko_count
-                        st.metric("Safe Members", f"{safe_count}/6", delta=f"{safe_count} members")
-        else:
-            st.error("No threat data available for survival calculation.")
+                        safe_count = len(processed_team) - ohko_count - twohko_count
+                        st.metric("Safe Members", f"{safe_count}/{len(processed_team)}", delta=f"{safe_count} members")
+        
+        except Exception as e:
+            st.error(f"Error in survival calculator: {str(e)}")
+            st.write("Debug info - threats_df columns:", threats_df.columns.tolist())
     
     with tab4:
         st.header("Team Optimization Recommendations")
         
-        if 'threats_df' not in locals():
+        if threats_df.empty:
             st.warning("Please upload threats data to use this feature")
             return
         
-        # Advanced EV optimization with move power estimation
+        # Advanced EV optimization
         st.subheader("🔧 Advanced EV Optimization")
         
-        if len(threats_df) > 0:
-            st.markdown("**Survival-Based EV Recommendations:**")
-            
-            # Select top threats for optimization
-            top_threats = threats_df.nlargest(3, 'Usage')
-            
-            optimization_recommendations = []
-            
-            for _, member in team_df.iterrows():
-                member_recs = {
-                    'Pokémon': member['Name'],
-                    'Current EVs': f"HP:{member.get('EV_HP', 0)} Atk:{member.get('EV_Atk', 0)} Def:{member.get('EV_Def', 0)} SpA:{member.get('EV_SpA', 0)} SpD:{member.get('EV_SpD', 0)} Spe:{member.get('EV_Spe', 0)}",
-                    'Survivability Issues': [],
-                    'Recommended Changes': []
-                }
-                
-                for _, threat in top_threats.iterrows():
-                    # Get threat's estimated strongest move
-                    estimated_moves = estimate_move_powers(threat)
-                    
-                    strongest_damage = 0
-                    strongest_move_info = None
-                    
-                    # Find the strongest move this threat can use
-                    for category, moves in estimated_moves.items():
-                        for move_name, power_range, move_type in moves:
-                            max_power = max(power_range)
-                            min_dmg, max_dmg, defender_hp = simulate_damage_range(
-                                threat, member, max_power, move_type, category, type_chart
-                            )
-                            
-                            if max_dmg > strongest_damage:
-                                strongest_damage = max_dmg
-                                strongest_move_info = {
-                                    'move': move_name,
-                                    'power': max_power,
-                                    'type': move_type,
-                                    'category': category,
-                                    'damage_percent': (max_dmg / defender_hp) * 100
-                                }
-                    
-                    # Analyze if member needs EV adjustments
-                    if strongest_move_info and strongest_move_info['damage_percent'] >= 100:
-                        member_recs['Survivability Issues'].append(
-                            f"OHKO'd by {threat['Name']}'s {strongest_move_info['move']} ({strongest_move_info['damage_percent']:.1f}%)"
-                        )
-                        
-                        # Calculate required bulk
-                        if strongest_move_info['category'] == 'Physical':
-                            current_def_evs = member.get('EV_Def', 0)
-                            current_hp_evs = member.get('EV_HP', 0)
-                            
-                            if current_def_evs < 100:
-                                member_recs['Recommended Changes'].append(
-                                    f"Increase Defense EVs to survive {threat['Name']}"
-                                )
-                            elif current_hp_evs < 200:
-                                member_recs['Recommended Changes'].append(
-                                    f"Increase HP EVs to survive {threat['Name']}"
-                                )
-                        else:  # Special
-                            current_spd_evs = member.get('EV_SpD', 0)
-                            current_hp_evs = member.get('EV_HP', 0)
-                            
-                            if current_spd_evs < 100:
-                                member_recs['Recommended Changes'].append(
-                                    f"Increase Special Defense EVs to survive {threat['Name']}"
-                                )
-                            elif current_hp_evs < 200:
-                                member_recs['Recommended Changes'].append(
-                                    f"Increase HP EVs to survive {threat['Name']}"
-                                )
-                    
-                    elif strongest_move_info and strongest_move_info['damage_percent'] >= 75:
-                        member_recs['Survivability Issues'].append(
-                            f"Takes heavy damage from {threat['Name']}'s {strongest_move_info['move']} ({strongest_move_info['damage_percent']:.1f}%)"
-                        )
-                
-                # Speed optimization
-                member_speed = calculate_stats_with_evs(member['Spe'], member.get('EV_Spe', 0))
-                if 95 <= member_speed <= 105:
-                    member_recs['Recommended Changes'].append("Awkward speed tier - consider full investment or minimal")
-                
-                # Mixed attacking optimization
-                if member.get('EV_Atk', 0) > 0 and member.get('EV_SpA', 0) > 0:
-                    member_recs['Recommended Changes'].append("Consider focusing on one attacking stat")
-                
-                optimization_recommendations.append(member_recs)
-            
-            # Display optimization table
-            for rec in optimization_recommendations:
-                if rec['Survivability Issues'] or rec['Recommended Changes']:
-                    with st.expander(f"{rec['Pokémon']} - Optimization Needed"):
-                        st.write(f"**Current EVs:** {rec['Current EVs']}")
-                        
-                        if rec['Survivability Issues']:
-                            st.write("**Survivability Issues:**")
-                            for issue in rec['Survivability Issues']:
-                                st.write(f"• {issue}")
-                        
-                        if rec['Recommended Changes']:
-                            st.write("**Recommended Changes:**")
-                            for change in rec['Recommended Changes']:
-                                st.write(f"• {change}")
+        st.markdown("**Survival-Based EV Recommendations:**")
+        top_threats = threats_df.nlargest(3, 'Usage') if 'Usage' in threats_df.columns else threats_df.head(3)
         
-        # Item optimization based on estimated damage
+        optimization_recommendations = []
+        
+        for _, member in processed_team.iterrows():
+            member_recs = {
+                'Pokémon': member['Name'],
+                'Current EVs': f"HP:{member.get('EV_HP', 0)} Atk:{member.get('EV_Atk', 0)} Def:{member.get('EV_Def', 0)} SpA:{member.get('EV_SpA', 0)} SpD:{member.get('EV_SpD', 0)} Spe:{member.get('EV_Spe', 0)}",
+                'Survivability Issues': [],
+                'Recommended Changes': []
+            }
+            
+            for _, threat in top_threats.iterrows():
+                estimated_moves = estimate_move_powers(threat)
+                
+                strongest_damage = 0
+                strongest_move_info = None
+                
+                # Find the strongest move this threat can use
+                for category, moves in estimated_moves.items():
+                    for move_name, power_range, move_type in moves:
+                        max_power = max(power_range)
+                        min_dmg, max_dmg, defender_hp = simulate_damage_range(
+                            threat, member, max_power, move_type, category, type_chart
+                        )
+                        
+                        if max_dmg > strongest_damage:
+                            strongest_damage = max_dmg
+                            strongest_move_info = {
+                                'move': move_name,
+                                'power': max_power,
+                                'type': move_type,
+                                'category': category,
+                                'damage_percent': (max_dmg / defender_hp) * 100
+                            }
+                
+                # Analyze if member needs EV adjustments
+                if strongest_move_info and strongest_move_info['damage_percent'] >= 100:
+                    member_recs['Survivability Issues'].append(
+                        f"OHKO'd by {threat['Name']}'s {strongest_move_info['move']} ({strongest_move_info['damage_percent']:.1f}%)"
+                    )
+                    
+                    # Calculate required bulk
+                    if strongest_move_info['category'] == 'Physical':
+                        current_def_evs = member.get('EV_Def', 0)
+                        current_hp_evs = member.get('EV_HP', 0)
+                        
+                        if current_def_evs < 100:
+                            member_recs['Recommended Changes'].append(
+                                f"Increase Defense EVs to survive {threat['Name']}"
+                            )
+                        elif current_hp_evs < 200:
+                            member_recs['Recommended Changes'].append(
+                                f"Increase HP EVs to survive {threat['Name']}"
+                            )
+                    else:  # Special
+                        current_spd_evs = member.get('EV_SpD', 0)
+                        current_hp_evs = member.get('EV_HP', 0)
+                        
+                        if current_spd_evs < 100:
+                            member_recs['Recommended Changes'].append(
+                                f"Increase Special Defense EVs to survive {threat['Name']}"
+                            )
+                        elif current_hp_evs < 200:
+                            member_recs['Recommended Changes'].append(
+                                f"Increase HP EVs to survive {threat['Name']}"
+                            )
+                
+                elif strongest_move_info and strongest_move_info['damage_percent'] >= 75:
+                    member_recs['Survivability Issues'].append(
+                        f"Takes heavy damage from {threat['Name']}'s {strongest_move_info['move']} ({strongest_move_info['damage_percent']:.1f}%)"
+                    )
+            
+            # Speed optimization
+            member_speed = calculate_stats_with_evs(member['Spe'], member.get('EV_Spe', 0))
+            if 95 <= member_speed <= 105:
+                member_recs['Recommended Changes'].append("Awkward speed tier - consider full investment or minimal")
+            
+            # Mixed attacking optimization
+            if member.get('EV_Atk', 0) > 0 and member.get('EV_SpA', 0) > 0:
+                member_recs['Recommended Changes'].append("Consider focusing on one attacking stat")
+            
+            optimization_recommendations.append(member_recs)
+        
+        # Display optimization table
+        for rec in optimization_recommendations:
+            if rec['Survivability Issues'] or rec['Recommended Changes']:
+                with st.expander(f"{rec['Pokémon']} - Optimization Needed"):
+                    st.write(f"**Current EVs:** {rec['Current EVs']}")
+                    
+                    if rec['Survivability Issues']:
+                        st.write("**Survivability Issues:**")
+                        for issue in rec['Survivability Issues']:
+                            st.write(f"• {issue}")
+                    
+                    if rec['Recommended Changes']:
+                        st.write("**Recommended Changes:**")
+                        for change in rec['Recommended Changes']:
+                            st.write(f"• {change}")
+        
+        # Item optimization
         st.subheader("📦 Item Optimization")
         
         item_recommendations = []
         
-        for _, member in team_df.iterrows():
+        for _, member in processed_team.iterrows():
             current_item = member.get('Item', 'None')
             suggestions = []
             
@@ -1053,15 +1040,14 @@ def main():
             special_threats = 0
             physical_threats = 0
             
-            if len(threats_df) > 0:
-                for _, threat in threats_df.head(5).iterrows():
-                    threat_spa = calculate_stats_with_evs(threat['SpA'], threat.get('EV_SpA', 0))
-                    threat_atk = calculate_stats_with_evs(threat['Atk'], threat.get('EV_Atk', 0))
-                    
-                    if threat_spa > threat_atk:
-                        special_threats += 1
-                    else:
-                        physical_threats += 1
+            for _, threat in threats_df.head(5).iterrows():
+                threat_spa = calculate_stats_with_evs(threat['SpA'], threat.get('EV_SpA', 0))
+                threat_atk = calculate_stats_with_evs(threat['Atk'], threat.get('EV_Atk', 0))
+                
+                if threat_spa > threat_atk:
+                    special_threats += 1
+                else:
+                    physical_threats += 1
             
             # Item suggestions based on role and threats
             if current_item != 'Assault Vest' and special_threats >= 3:
@@ -1093,8 +1079,10 @@ def main():
         # Team composition suggestions
         st.subheader("🎯 Team Composition Advice")
         
-        type_chart = load_type_chart()
-        weaknesses = analyze_team_weaknesses(team_df, type_chart)
+        weaknesses = analyze_team_weaknesses(
+            [[row['Type1'], row['Type2']] for _, row in processed_team.iterrows() if pd.notna(row['Type1'])], 
+            type_chart
+        )
         speed_data = analyze_speed_tiers(processed_team)
         
         suggestions = []
@@ -1133,33 +1121,32 @@ def main():
         # Specific threat counters
         st.subheader("🛡️ Recommended Threat Counters")
         
-        if len(threats_df) > 0:
-            top_threats = threats_df.nlargest(5, 'Usage')
+        top_threats = threats_df.nlargest(5, 'Usage') if 'Usage' in threats_df.columns else threats_df.head(5)
+        
+        counter_suggestions = []
+        for _, threat in top_threats.iterrows():
+            # Find what's super effective against this threat
+            threat_types = [threat['Type1']]
+            if pd.notna(threat.get('Type2')):
+                threat_types.append(threat['Type2'])
             
-            counter_suggestions = []
-            for _, threat in top_threats.iterrows():
-                # Find what's super effective against this threat
-                threat_types = [threat['Type1']]
-                if pd.notna(threat.get('Type2')):
-                    threat_types.append(threat['Type2'])
-                
-                effective_types = []
-                for attack_type in type_chart.keys():
-                    effectiveness = calculate_type_effectiveness(attack_type, threat_types, type_chart)
-                    if effectiveness > 1.0:
-                        effective_types.append(attack_type)
-                
-                if effective_types:
-                    counter_suggestions.append({
-                        'Threat': f"{threat['Name']} ({threat['Type1']}{f'/{threat["Type2"]}' if pd.notna(threat.get("Type2")) else ''})",
-                        'Usage %': f"{threat.get('Usage', 0):.1f}%",
-                        'Super Effective Types': ', '.join(effective_types[:4]),
-                        'Recommended Moves': f"{effective_types[0]} moves (e.g., {get_move_example(effective_types[0])})"
-                    })
+            effective_types = []
+            for attack_type in type_chart.keys():
+                effectiveness = calculate_type_effectiveness(attack_type, threat_types, type_chart)
+                if effectiveness > 1.0:
+                    effective_types.append(attack_type)
             
-            if counter_suggestions:
-                counter_df = pd.DataFrame(counter_suggestions)
-                st.dataframe(counter_df, use_container_width=True)
+            if effective_types:
+                counter_suggestions.append({
+                    'Threat': f"{threat['Name']} ({threat['Type1']}{f'/{threat['Type2']}' if pd.notna(threat.get('Type2')) else ''})",
+                    'Usage %': f"{threat.get('Usage', 0):.1f}%" if 'Usage' in threat else "N/A",
+                    'Super Effective Types': ', '.join(effective_types[:4]),
+                    'Recommended Moves': f"{effective_types[0]} moves (e.g., {get_move_example(effective_types[0])})"
+                })
+        
+        if counter_suggestions:
+            counter_df = pd.DataFrame(counter_suggestions)
+            st.dataframe(counter_df, use_container_width=True)
         
         # Advanced optimization section
         st.subheader("🔬 Advanced Optimization")
@@ -1196,7 +1183,7 @@ def main():
         if st.button("Generate Detailed Report"):
             # Compile all analysis data
             report_data = {
-                'Team Overview': team_df.to_dict('records'),
+                'Team Overview': processed_team.to_dict('records'),
                 'Type Weaknesses': weaknesses,
                 'Speed Analysis': speed_data,
                 'Optimization Tips': optimization_recommendations,
@@ -1205,7 +1192,7 @@ def main():
             
             # Convert to text format for download
             report_text = "=== VGC TEAM ANALYSIS REPORT ===\n\n"
-            report_text += f"Team: {', '.join(team_df['Name'].tolist())}\n\n"
+            report_text += f"Team: {', '.join(processed_team['Name'].tolist())}\n\n"
             
             report_text += "CRITICAL WEAKNESSES:\n"
             for weakness, count in list(weaknesses.items())[:5]:
@@ -1234,7 +1221,7 @@ def main():
             st.download_button(
                 label="Download Analysis Report",
                 data=report_text,
-                file_name=f"vgc_analysis_{'-'.join(team_df['Name'].str.lower().str.replace(' ', '_'))}.txt",
+                file_name=f"vgc_analysis_{'-'.join(processed_team['Name'].str.lower().str.replace(' ', '_'))}.txt",
                 mime="text/plain"
             )
 
