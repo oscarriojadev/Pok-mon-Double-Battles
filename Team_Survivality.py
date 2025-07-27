@@ -22,41 +22,46 @@ def preprocess_all_pokemon_data_for_threats(df):
     """Process threats dataset with flexible column names"""
     processed = pd.DataFrame()
     
-    # Flexible column name handling
-    name_col = find_column(df, ['Name', 'Pokemon', 'Pokémon', 'Pokémon Name'])
-    type1_col = find_column(df, ['Typing (Primary)', 'Type1', 'Primary Type', 'Type 1'])
-    type2_col = find_column(df, ['Typing (Secondary)', 'Type2', 'Secondary Type', 'Type 2'])
-    usage_col = find_column(df, ['Meta Usage (%)', 'Usage', 'Usage %', 'Meta Usage'])
+    # Flexible column name handling with case-insensitive matching
+    name_col = find_column(df, ['Name', 'Pokemon', 'Pokémon', 'Pokémon Name', 'pokemon', 'name'])
+    type1_col = find_column(df, ['Typing (Primary)', 'Type1', 'Primary Type', 'Type 1', 'type1', 'primary type', 'primary_type'])
+    type2_col = find_column(df, ['Typing (Secondary)', 'Type2', 'Secondary Type', 'Type 2', 'type2', 'secondary type', 'secondary_type'])
+    usage_col = find_column(df, ['Meta Usage (%)', 'Usage', 'Usage %', 'Meta Usage', 'usage', 'usage_percentage'])
     
     # Basic info
-    if name_col:
-        processed['Name'] = df[name_col]
-    else:
+    if not name_col:
         st.error("Could not find Pokémon name column in threats data")
+        st.write("Available columns:", df.columns.tolist())
         return None
     
-    if type1_col:
-        processed['Type1'] = df[type1_col]
+    processed['Name'] = df[name_col]
+    
+    if not type1_col:
+        st.error(f"Could not find primary type column in threats data. Available columns: {df.columns.tolist()}")
+        return None
+    
+    processed['Type1'] = df[type1_col].str.strip() if df[type1_col].dtype == 'object' else df[type1_col]
+    
+    if type2_col:
+        processed['Type2'] = df[type2_col].replace(['NA', '', 'None', np.nan, 'nan', 'NaN'], None)
+        processed['Type2'] = processed['Type2'].str.strip() if processed['Type2'].dtype == 'object' else processed['Type2']
     else:
-        st.error("Could not find primary type column in threats data")
-        return None
-    
-    processed['Type2'] = df[type2_col].replace('NA', None) if type2_col else None
+        processed['Type2'] = None
     
     # Base stats with flexible column names
     stat_mapping = {
-        'HP': ['Base Stats: HP', 'HP', 'Base HP'],
-        'Atk': ['Base Stats: Atk', 'Attack', 'Atk', 'Base Atk'],
-        'Def': ['Base Stats: Def', 'Defense', 'Def', 'Base Def'],
-        'SpA': ['Base Stats: SpA', 'Sp. Atk', 'SpA', 'Base SpA'],
-        'SpD': ['Base Stats: SpD', 'Sp. Def', 'SpD', 'Base SpD'],
-        'Spe': ['Base Stats: Spe', 'Speed', 'Spe', 'Base Spe']
+        'HP': ['Base Stats: HP', 'HP', 'Base HP', 'hp', 'base_hp'],
+        'Atk': ['Base Stats: Atk', 'Attack', 'Atk', 'Base Atk', 'attack', 'base_attack'],
+        'Def': ['Base Stats: Def', 'Defense', 'Def', 'Base Def', 'defense', 'base_defense'],
+        'SpA': ['Base Stats: SpA', 'Sp. Atk', 'SpA', 'Base SpA', 'special_attack', 'sp_attack'],
+        'SpD': ['Base Stats: SpD', 'Sp. Def', 'SpD', 'Base SpD', 'special_defense', 'sp_defense'],
+        'Spe': ['Base Stats: Spe', 'Speed', 'Spe', 'Base Spe', 'speed', 'base_speed']
     }
     
     for stat, possible_names in stat_mapping.items():
         col = find_column(df, possible_names)
         if col:
-            processed[stat] = df[col]
+            processed[stat] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         else:
             st.warning(f"Could not find {stat} column, using 0 as default")
             processed[stat] = 0
@@ -344,50 +349,71 @@ def analyze_comprehensive_threats(team_df, threats_df, type_chart):
     """Analyze threats against the team with comprehensive move estimation"""
     results = []
     
+    # Validate required columns exist
+    required_columns = ['Name', 'Type1']
+    for col in required_columns:
+        if col not in threats_df.columns:
+            st.error(f"Required column '{col}' missing from threats data. Available columns: {threats_df.columns.tolist()}")
+            return pd.DataFrame(columns=['Threat', 'Types', 'Usage %', 'OHKO Count', '2HKO Count', 
+                                       'Max Damage %', 'Most Dangerous Move', 'Worst Matchup'])
+    
     for _, threat in threats_df.iterrows():
-        threat_data = {
-            'Threat': threat['Name'],
-            'Types': f"{threat['Type1']}{f'/{threat["Type2"]}' if pd.notna(threat.get('Type2')) else ''}",
-            'Usage %': threat.get('Usage', 0),
-            'OHKO Count': 0,
-            '2HKO Count': 0,
-            'Max Damage %': 0,
-            'Most Dangerous Move': '',
-            'Worst Matchup': ''
-        }
-        
-        estimated_moves = estimate_move_powers(threat)
-        max_damage_pct = 0
-        worst_move = ''
-        worst_matchup = ''
-        
-        for category, moves in estimated_moves.items():
-            for move_name, power_range, move_type in moves:
-                for power in power_range:
-                    for _, member in team_df.iterrows():
-                        min_dmg, max_dmg, defender_hp = simulate_damage_range(
-                            threat, member, power, move_type, category, type_chart
-                        )
-                        
-                        damage_pct = (max_dmg / defender_hp) * 100
-                        
-                        # Track worst case scenario
-                        if damage_pct > max_damage_pct:
-                            max_damage_pct = damage_pct
-                            worst_move = f"{move_name} ({power}BP)"
-                            worst_matchup = member['Name']
-                        
-                        # Count OHKOs and 2HKOs
-                        if max_dmg >= defender_hp:
-                            threat_data['OHKO Count'] += 1
-                        elif max_dmg >= defender_hp * 0.5:
-                            threat_data['2HKO Count'] += 1
-        
-        threat_data['Max Damage %'] = max_damage_pct
-        threat_data['Most Dangerous Move'] = worst_move
-        threat_data['Worst Matchup'] = worst_matchup
-        
-        results.append(threat_data)
+        try:
+            # Handle missing Type2
+            type2 = threat['Type2'] if 'Type2' in threats_df.columns and pd.notna(threat.get('Type2')) else None
+            types_display = f"{threat['Type1']}{f'/{type2}' if type2 else ''}"
+            
+            threat_data = {
+                'Threat': threat['Name'],
+                'Types': types_display,
+                'Usage %': threat.get('Usage', 0),
+                'OHKO Count': 0,
+                '2HKO Count': 0,
+                'Max Damage %': 0,
+                'Most Dangerous Move': '',
+                'Worst Matchup': ''
+            }
+            
+            estimated_moves = estimate_move_powers(threat)
+            max_damage_pct = 0
+            worst_move = ''
+            worst_matchup = ''
+            
+            for category, moves in estimated_moves.items():
+                for move_name, power_range, move_type in moves:
+                    for power in power_range:
+                        for _, member in team_df.iterrows():
+                            min_dmg, max_dmg, defender_hp = simulate_damage_range(
+                                threat, member, power, move_type, category, type_chart
+                            )
+                            
+                            damage_pct = (max_dmg / defender_hp) * 100
+                            
+                            # Track worst case scenario
+                            if damage_pct > max_damage_pct:
+                                max_damage_pct = damage_pct
+                                worst_move = f"{move_name} ({power}BP)"
+                                worst_matchup = member['Name']
+                            
+                            # Count OHKOs and 2HKOs
+                            if max_dmg >= defender_hp:
+                                threat_data['OHKO Count'] += 1
+                            elif max_dmg >= defender_hp * 0.5:
+                                threat_data['2HKO Count'] += 1
+            
+            threat_data['Max Damage %'] = max_damage_pct
+            threat_data['Most Dangerous Move'] = worst_move
+            threat_data['Worst Matchup'] = worst_matchup
+            
+            results.append(threat_data)
+            
+        except Exception as e:
+            st.warning(f"Error processing threat {threat.get('Name', 'unknown')}: {str(e)}")
+            continue
+    
+    if not results:
+        return pd.DataFrame(columns=['Threat', 'Types', 'Usage %', 'OHKO Count', '2HKO Count', 
+                                   'Max Damage %', 'Most Dangerous Move', 'Worst Matchup'])
     
     return pd.DataFrame(results)
 
