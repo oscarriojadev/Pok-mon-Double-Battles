@@ -380,7 +380,7 @@ def main():
         team_types = []
         for _, row in team_df.iterrows():
             types = [row['Typing (Primary)']]
-            if pd.notna(row.get('Typing (Secondary)']) and row['Typing (Secondary)'] != 'NA':
+            if pd.notna(row.get('Typing (Secondary)')) and row['Typing (Secondary)'] != 'NA':
                 types.append(row['Typing (Secondary)'])
             team_types.append(types)
         
