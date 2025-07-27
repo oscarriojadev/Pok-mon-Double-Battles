@@ -701,7 +701,7 @@ Garchomp,Dragon,Ground,108,130,95,80,85,102,18.7,A""")
             'Move 1', 'Move 2', 'Move 3', 'Move 4'
         ]], use_container_width=True, height=400)
     
-        # 2. Calculate and Display Team Stats (using raw data)
+        # 2. Calculate and Display Team Stats
         st.subheader("Team Stats Summary")
         col1, col2, col3 = st.columns(3)
         
@@ -717,10 +717,9 @@ Garchomp,Dragon,Ground,108,130,95,80,85,102,18.7,A""")
             physical_attackers = len([x for x in team_df['Role'] if 'Physical' in str(x)])
             st.metric("Physical Attackers", physical_attackers)
     
-        # 3. Type Weakness Analysis (using raw data)
+        # 3. Type Weakness Analysis
         st.subheader("Type Weakness Analysis")
         
-        # Convert raw team data to types list for analysis
         team_types = []
         for _, row in team_df.iterrows():
             types = [row['Typing (Primary)']]
@@ -731,14 +730,15 @@ Garchomp,Dragon,Ground,108,130,95,80,85,102,18.7,A""")
         weaknesses = analyze_team_weaknesses(team_types, load_type_chart())
         
         if weaknesses:
-            weakness_df = pd.DataFrame(list(weaknesses.items()), columns=['Type', 'Weak Members'])
-            fig = px.bar(weakness_df, x='Type', y='Weak Members', 
+            weakness_df = pd.DataFrame(list(weaknesses.items()), 
+                                     columns=['Type', 'Weak Members'])
+            fig = px.bar(weakness_df, x='Type', y='Weak Members',
                         title="Team Type Weaknesses",
                         color='Weak Members',
                         color_continuous_scale='Reds')
             st.plotly_chart(fig, use_container_width=True)
     
-        # 4. Speed Tier Analysis (using raw data)
+        # 4. Speed Tier Analysis
         st.subheader("Speed Tier Distribution")
         
         speed_data = []
@@ -753,9 +753,9 @@ Garchomp,Dragon,Ground,108,130,95,80,85,102,18.7,A""")
         fig = px.scatter(speed_df, x='Pokemon', y='Speed', color='Tier',
                        title="Team Speed Distribution",
                        hover_data=['Tier'])
-        fig.add_hline(y=70, line_dash="dash", line_color="red", 
+        fig.add_hline(y=70, line_dash="dash", line_color="red",
                      annotation_text="Trick Room Threshold")
-        fig.add_hline(y=100, line_dash="dash", line_color="orange", 
+        fig.add_hline(y=100, line_dash="dash", line_color="orange",
                      annotation_text="Average Speed")
         st.plotly_chart(fig, use_container_width=True)
     
