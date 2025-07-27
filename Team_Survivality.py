@@ -811,9 +811,9 @@ Garchomp,Dragon,Ground,108,130,95,80,85,102,18.7,A""")
                 return ''
             
             styled_df = (threat_analysis.style
-                        .applymap(style_threat_analysis, subset=['Max Damage %'])
-                        .applymap(style_ohko_count, subset=['OHKO Count'])
-                        .format({'OHKO Count': '{:.1f}', 'Max Damage %': '{:.1f}%', 'Usage %': '{:.1f}%'}))
+             .map(style_threat_analysis, subset=['Max Damage %'])  
+             .map(style_ohko_count, subset=['OHKO Count'])        
+             .format({'OHKO Count': '{:.1f}', 'Max Damage %': '{:.1f}%', 'Usage %': '{:.1f}%'}))
             
             st.dataframe(styled_df, use_container_width=True)
             
