@@ -12,18 +12,15 @@ import re
 # ========================
 
 def preprocess_all_pokemon_data_for_threats(df):
-    """
-    Convert Dataset 1 (All Pokémon Data) to threats format for the analyzer
-    Updated to match your specific dataset columns
-    """
+    """Process the threats dataset (all Pokémon)"""
     processed = pd.DataFrame()
     
     # Basic info
     processed['Name'] = df['Name']
     processed['Type1'] = df['Typing (Primary)']
-    processed['Type2'] = df['Typing (Secondary)'].replace('NA', None)  # Handle NA values
+    processed['Type2'] = df['Typing (Secondary)'].replace('NA', None)
     
-    # Base stats (directly use numeric values)
+    # Base stats
     processed['HP'] = df['Base Stats: HP']
     processed['Atk'] = df['Base Stats: Atk']
     processed['Def'] = df['Base Stats: Def']
@@ -31,39 +28,18 @@ def preprocess_all_pokemon_data_for_threats(df):
     processed['SpD'] = df['Base Stats: SpD']
     processed['Spe'] = df['Base Stats: Spe']
     
-    # Convert Meta Usage to Usage (simplified since your data is already numeric)
-    def extract_usage(usage_text):
-        if pd.isna(usage_text):
-            return 0.0
-        try:
-            return float(usage_text)  # Direct conversion
-        except:
-            return 0.0
+    # Usage
+    processed['Usage'] = df['Meta Usage (%)'].fillna(0.0)
     
-    processed['Usage'] = df['Meta Usage (%)'].apply(extract_usage)
-    
-    # Create tier based on usage
-    def assign_tier(row):
-        usage = row['Usage']
-        
-        if usage >= 80:
-            return 'S'
-        elif usage >= 60:
-            return 'A'
-        elif usage >= 30:
-            return 'B'
-        else:
-            return 'C'
-    
-    processed['Tier'] = processed.apply(assign_tier, axis=1)
+    # Tier assignment
+    processed['Tier'] = processed['Usage'].apply(
+        lambda x: 'S' if x >= 80 else 'A' if x >= 60 else 'B' if x >= 30 else 'C'
+    )
     
     return processed
 
 def preprocess_team_data_for_analyzer(df):
-    """
-    Convert Dataset 2 (Team data) to team format for the analyzer
-    Works with your team dataset format
-    """
+    """Process the team dataset"""
     processed = pd.DataFrame()
     
     # Basic info
@@ -79,30 +55,21 @@ def preprocess_team_data_for_analyzer(df):
     processed['SpD'] = df['Base Stats: SpD']
     processed['Spe'] = df['Base Stats: Spe']
     
-    # Parse EVs from text format "252 HP/252 Atk/4 SpD"
+    # Parse EVs
     def parse_evs(ev_text):
         ev_dict = {'HP': 0, 'Atk': 0, 'Def': 0, 'SpA': 0, 'SpD': 0, 'Spe': 0}
-        
         if pd.isna(ev_text) or ev_text == 'NA':
             return ev_dict
-        
-        # Split by '/' and parse each part
         parts = str(ev_text).split('/')
         for part in parts:
-            part = part.strip()
-            # Look for patterns like "252 HP", "4 SpD", etc.
-            match = re.match(r'(\d+)\s*(\w+)', part)
+            match = re.match(r'(\d+)\s*(\w+)', part.strip())
             if match:
                 value, stat = match.groups()
                 if stat in ev_dict:
                     ev_dict[stat] = int(value)
-        
         return ev_dict
     
-    # Apply EV parsing to each row
     ev_data = df['EVs'].apply(parse_evs)
-    
-    # Extract EV values into separate columns
     processed['EV_HP'] = [ev['HP'] for ev in ev_data]
     processed['EV_Atk'] = [ev['Atk'] for ev in ev_data]
     processed['EV_Def'] = [ev['Def'] for ev in ev_data]
@@ -110,78 +77,32 @@ def preprocess_team_data_for_analyzer(df):
     processed['EV_SpD'] = [ev['SpD'] for ev in ev_data]
     processed['EV_Spe'] = [ev['Spe'] for ev in ev_data]
     
-    # Items and other info
+    # Other info
     processed['Item'] = df['Item']
     processed['Ability'] = df['Ability']
     
-    # Combine moves into comma-separated string
+    # Combine moves
     moves = []
     for _, row in df.iterrows():
         move_list = []
-        for i in range(1, 5):  # Move 1 through Move 4
+        for i in range(1, 5):
             move_col = f'Move {i}'
             if move_col in df.columns:
                 move = row.get(move_col, '')
                 if pd.notna(move) and str(move).strip() != 'NA':
                     move_list.append(str(move).strip())
         moves.append(','.join(move_list))
-    
     processed['Moves'] = moves
     
     return processed
 
-def detect_data_format(df):
-    """
-    Detect if uploaded data is in raw format or analyzer format
-    Updated to match your specific column names
-    """
-    # Check for analyzer format columns
-    analyzer_team_cols = ['Name', 'Type1', 'Type2', 'HP', 'Atk', 'Def', 'SpA', 'SpD', 'Spe', 'EV_HP']
-    analyzer_threats_cols = ['Name', 'Type1', 'Type2', 'HP', 'Atk', 'Def', 'SpA', 'SpD', 'Spe', 'Usage', 'Tier']
-    
-    # Check for raw format columns (your specific columns)
-    raw_team_cols = ['Pokemon', 'Typing (Primary)', 'Base Stats: HP', 'EVs']
-    raw_threats_cols = ['Name', 'Typing (Primary)', 'Base Stats: HP', 'Meta Usage (%)']
-    
-    if all(col in df.columns for col in analyzer_team_cols):
-        return 'analyzer_team'
-    elif all(col in df.columns for col in analyzer_threats_cols):
-        return 'analyzer_threats'
-    elif all(col in df.columns for col in raw_team_cols):
-        return 'raw_team'
-    elif all(col in df.columns for col in raw_threats_cols):
-        return 'raw_threats'
-    else:
-        return 'unknown'
-
-def validate_processed_data(team_df, threats_df):
-    """
-    Validate that processed data has all required columns
-    """
-    required_team_columns = [
-        'Name', 'Type1', 'Type2', 'HP', 'Atk', 'Def', 'SpA', 'SpD', 'Spe',
-        'EV_HP', 'EV_Atk', 'EV_Def', 'EV_SpA', 'EV_SpD', 'EV_Spe',
-        'Item', 'Ability', 'Moves'
-    ]
-    
-    required_threats_columns = [
-        'Name', 'Type1', 'Type2', 'HP', 'Atk', 'Def', 'SpA', 'SpD', 'Spe',
-        'Usage', 'Tier'
-    ]
-    
-    team_valid = all(col in team_df.columns for col in required_team_columns)
-    threats_valid = all(col in threats_df.columns for col in required_threats_columns)
-    
-    return team_valid, threats_valid
-
-
 # ========================
-# 2. TYPE CHART AND CONSTANTS
+# 2. TYPE CHART AND ANALYSIS FUNCTIONS
 # ========================
 
 @st.cache_data
 def load_type_chart():
-    """Complete type effectiveness chart for all 18 types"""
+    """Complete type effectiveness chart"""
     return {
         'Normal': {'weak': ['Fighting'], 'resist': [], 'immune': ['Ghost']},
         'Fire': {'weak': ['Water', 'Rock', 'Ground'], 'resist': ['Fire', 'Grass', 'Ice', 'Bug', 'Steel', 'Fairy'], 'immune': []},
@@ -203,47 +124,9 @@ def load_type_chart():
         'Fairy': {'weak': ['Poison', 'Steel'], 'resist': ['Fighting', 'Bug', 'Dark'], 'immune': ['Dragon']}
     }
 
-# Sample datasets
-SAMPLE_TEAM = [
-    {
-        'Name': 'Iron Hands', 'Type1': 'Fighting', 'Type2': 'Electric',
-        'HP': 154, 'Atk': 140, 'Def': 108, 'SpA': 50, 'SpD': 68, 'Spe': 50,
-        'EV_HP': 252, 'EV_Atk': 252, 'EV_Def': 0, 'EV_SpA': 0, 'EV_SpD': 4, 'EV_Spe': 0,
-        'Item': 'Assault Vest', 'Ability': 'Quark Drive',
-        'Moves': 'Drain Punch,Thunder Punch,Fake Out,Wild Charge'
-    },
-    {
-        'Name': 'Flutter Mane', 'Type1': 'Ghost', 'Type2': 'Fairy',
-        'HP': 55, 'Atk': 55, 'Def': 55, 'SpA': 135, 'SpD': 135, 'Spe': 135,
-        'EV_HP': 4, 'EV_Atk': 0, 'EV_Def': 0, 'EV_SpA': 252, 'EV_SpD': 0, 'EV_Spe': 252,
-        'Item': 'Life Orb', 'Ability': 'Protosynthesis',
-        'Moves': 'Moonblast,Shadow Ball,Protect,Dazzling Gleam'
-    },
-    {
-        'Name': 'Garchomp', 'Type1': 'Dragon', 'Type2': 'Ground',
-        'HP': 108, 'Atk': 130, 'Def': 95, 'SpA': 80, 'SpD': 85, 'Spe': 102,
-        'EV_HP': 4, 'EV_Atk': 252, 'EV_Def': 0, 'EV_SpA': 0, 'EV_SpD': 0, 'EV_Spe': 252,
-        'Item': 'Rocky Helmet', 'Ability': 'Rough Skin',
-        'Moves': 'Dragon Claw,Earthquake,Rock Slide,Protect'
-    }
-]
-
-SAMPLE_THREATS = [
-    {'Name': 'Flutter Mane', 'Type1': 'Ghost', 'Type2': 'Fairy', 'HP': 55, 'Atk': 55, 'Def': 55, 'SpA': 135, 'SpD': 135, 'Spe': 135, 'Usage': 32.5, 'Tier': 'S'},
-    {'Name': 'Garchomp', 'Type1': 'Dragon', 'Type2': 'Ground', 'HP': 108, 'Atk': 130, 'Def': 95, 'SpA': 80, 'SpD': 85, 'Spe': 102, 'Usage': 18.7, 'Tier': 'A'},
-    {'Name': 'Amoonguss', 'Type1': 'Grass', 'Type2': 'Poison', 'HP': 114, 'Atk': 85, 'Def': 70, 'SpA': 85, 'SpD': 80, 'Spe': 30, 'Usage': 15.2, 'Tier': 'A'},
-    {'Name': 'Tornadus', 'Type1': 'Flying', 'Type2': None, 'HP': 79, 'Atk': 115, 'Def': 70, 'SpA': 125, 'SpD': 80, 'Spe': 111, 'Usage': 12.8, 'Tier': 'B'},
-    {'Name': 'Dragonite', 'Type1': 'Dragon', 'Type2': 'Flying', 'HP': 91, 'Atk': 134, 'Def': 95, 'SpA': 100, 'SpD': 100, 'Spe': 80, 'Usage': 11.3, 'Tier': 'B'}
-]
-
-# ========================
-# 3. CORE ANALYSIS FUNCTIONS
-# ========================
-
 def calculate_type_effectiveness(attacker_type: str, defender_types: List[str], type_chart: Dict) -> float:
     """Calculate type effectiveness multiplier"""
     effectiveness = 1.0
-    
     for def_type in defender_types:
         if def_type and def_type in type_chart:
             if attacker_type in type_chart[def_type]['weak']:
@@ -252,7 +135,6 @@ def calculate_type_effectiveness(attacker_type: str, defender_types: List[str], 
                 effectiveness *= 0.5
             elif attacker_type in type_chart[def_type]['immune']:
                 return 0.0
-    
     return effectiveness
 
 def calculate_stats_with_evs(base_stat: int, ev: int, level: int = 50) -> int:
@@ -263,223 +145,21 @@ def calculate_hp_with_evs(base_hp: int, ev_hp: int, level: int = 50) -> int:
     """Calculate HP with EVs at level 50"""
     return math.floor(((2 * base_hp + 31 + (ev_hp // 4)) * level) // 100) + level + 10
 
-def estimate_move_powers(attacker: Dict) -> Dict[str, List[int]]:
-    """Estimate realistic move power ranges based on Pokémon's attacking stats and common VGC moves"""
-    
-    # Get actual attacking stats with EVs
-    physical_attack = calculate_stats_with_evs(attacker['Atk'], attacker.get('EV_Atk', 0))
-    special_attack = calculate_stats_with_evs(attacker['SpA'], attacker.get('EV_SpA', 0))
-    
-    # Determine primary attacking style
-    is_physical_focused = physical_attack > special_attack
-    is_mixed = abs(physical_attack - special_attack) < 20
-    
-    # Common VGC move power distributions
-    move_powers = {
-        'weak': [60, 70, 75],      # Utility moves, priority moves
-        'medium': [80, 85, 90],    # Standard STAB moves
-        'strong': [95, 100, 110],  # Strong STAB moves
-        'powerful': [120, 130, 140] # Z-moves, choice locked moves, risky moves
-    }
-    
-    # Estimate move arsenal based on stats and meta trends
-    estimated_moves = {
-        'Physical': [],
-        'Special': []
-    }
-    
-    if is_physical_focused or is_mixed:
-        # Physical movesets
-        estimated_moves['Physical'] = [
-            ('STAB Physical (Medium)', move_powers['medium'], attacker['Type1']),
-            ('STAB Physical (Strong)', move_powers['strong'], attacker['Type1']),
-            ('Coverage Physical', move_powers['medium'], 'Normal'),  # Neutral coverage
-        ]
-        
-        # Add second STAB if dual-type
-        if pd.notna(attacker.get('Type2')):
-            estimated_moves['Physical'].append(
-                ('STAB Physical Type2', move_powers['medium'], attacker['Type2'])
-            )
-    
-    if not is_physical_focused or is_mixed:
-        # Special movesets
-        estimated_moves['Special'] = [
-            ('STAB Special (Medium)', move_powers['medium'], attacker['Type1']),
-            ('STAB Special (Strong)', move_powers['strong'], attacker['Type1']),
-            ('Coverage Special', move_powers['medium'], 'Normal'),
-        ]
-        
-        # Add second STAB if dual-type
-        if pd.notna(attacker.get('Type2')):
-            estimated_moves['Special'].append(
-                ('STAB Special Type2', move_powers['medium'], attacker['Type2'])
-            )
-    
-    # Add signature/powerful moves for high-stat Pokémon
-    if physical_attack >= 130 or special_attack >= 130:
-        if is_physical_focused:
-            estimated_moves['Physical'].append(
-                ('Signature Physical', move_powers['powerful'], attacker['Type1'])
-            )
-        else:
-            estimated_moves['Special'].append(
-                ('Signature Special', move_powers['powerful'], attacker['Type1'])
-            )
-    
-    return estimated_moves
-
-def simulate_damage_range(attacker: Dict, defender: Dict, move_power: int, move_type: str, 
-                         move_category: str, type_chart: Dict) -> Tuple[int, int, int]:
-    """Calculate damage range (min, max) using Gen 9 damage formula"""
-    level = 50
-    
-    # Calculate actual stats with EVs
-    if move_category == 'Physical':
-        attack_stat = calculate_stats_with_evs(attacker['Atk'], attacker.get('EV_Atk', 0))
-        defense_stat = calculate_stats_with_evs(defender['Def'], defender.get('EV_Def', 0))
-    else:  # Special
-        attack_stat = calculate_stats_with_evs(attacker['SpA'], attacker.get('EV_SpA', 0))
-        defense_stat = calculate_stats_with_evs(defender['SpD'], defender.get('EV_SpD', 0))
-    
-    defender_hp = calculate_hp_with_evs(defender['HP'], defender.get('EV_HP', 0))
-    
-    # Apply item modifiers to stats before damage calculation
-    if defender.get('Item') == 'Assault Vest' and move_category == 'Special':
-        defense_stat = math.floor(defense_stat * 1.5)
-    
-    if attacker.get('Item') == 'Choice Band' and move_category == 'Physical':
-        attack_stat = math.floor(attack_stat * 1.5)
-    elif attacker.get('Item') == 'Choice Specs' and move_category == 'Special':
-        attack_stat = math.floor(attack_stat * 1.5)
-    
-    # Base damage calculation (Gen 9 formula)
-    base_damage = ((2 * level / 5 + 2) * move_power * attack_stat / defense_stat) / 50 + 2
-    
-    # Apply modifiers
-    stab = 1.5 if move_type in [attacker['Type1'], attacker.get('Type2')] else 1.0
-    type_eff = calculate_type_effectiveness(move_type, [defender['Type1'], defender.get('Type2')], type_chart)
-    
-    # Item damage modifiers
-    item_modifier = 1.0
-    if attacker.get('Item') == 'Life Orb':
-        item_modifier = 1.3
-    elif attacker.get('Item') == 'Expert Belt' and type_eff > 1.0:
-        item_modifier = 1.2
-    
-    # Weather and field modifiers (simplified)
-    weather_modifier = 1.0
-    # Could add weather detection based on team composition
-    
-    final_damage = base_damage * stab * type_eff * item_modifier * weather_modifier
-    
-    # Damage rolls (85% to 100%)
-    min_damage = math.floor(final_damage * 0.85)
-    max_damage = math.floor(final_damage)
-    
-    return min_damage, max_damage, defender_hp
-
-def analyze_comprehensive_threats(team_df: pd.DataFrame, threats_df: pd.DataFrame, type_chart: Dict) -> pd.DataFrame:
-    """Analyze threats using estimated move power ranges for realistic damage calculations"""
-    results = []
-    
-    for _, threat in threats_df.iterrows():
-        # Get estimated moveset for this threat
-        estimated_moves = estimate_move_powers(threat)
-        
-        threat_data = {
-            'Threat': threat['Name'],
-            'Types': f"{threat['Type1']}{f'/{threat["Type2"]}' if pd.notna(threat.get('Type2')) else ''}",
-            'Usage %': threat.get('Usage', 0),
-            'Tier': threat.get('Tier', 'Unknown'),
-            'OHKO Count': 0,
-            '2HKO Count': 0,
-            'Worst Matchup': '',
-            'Max Damage %': 0,
-            'Most Dangerous Move': '',
-            'Speed Advantage': 0
-        }
-        
-        most_damage = 0
-        most_dangerous_move = ''
-        
-        # Test all estimated moves against all team members
-        for category, moves in estimated_moves.items():
-            if not moves:  # Skip empty categories
-                continue
-                
-            for move_name, power_range, move_type in moves:
-                # Test with maximum power from the range
-                max_power = max(power_range)
-                
-                for _, team_member in team_df.iterrows():
-                    min_dmg, max_dmg, defender_hp = simulate_damage_range(
-                        threat, team_member, max_power, move_type, category, type_chart
-                    )
-                    
-                    damage_percent = (max_dmg / defender_hp) * 100
-                    
-                    # Track most dangerous combination
-                    if damage_percent > most_damage:
-                        most_damage = damage_percent
-                        threat_data['Worst Matchup'] = team_member['Name']
-                        most_dangerous_move = f"{move_name} ({max_power}BP)"
-                        threat_data['Max Damage %'] = damage_percent
-                        threat_data['Most Dangerous Move'] = most_dangerous_move
-                    
-                    # Count OHKO and 2HKO potential
-                    if min_dmg >= defender_hp:  # Guaranteed OHKO
-                        threat_data['OHKO Count'] += 1
-                    elif max_dmg >= defender_hp:  # Possible OHKO
-                        threat_data['OHKO Count'] += 0.5  # Partial count for roll-dependent
-                    elif max_dmg >= defender_hp * 0.5:  # 2HKO potential
-                        threat_data['2HKO Count'] += 1
-        
-        # Speed comparison
-        threat_speed = calculate_stats_with_evs(threat['Spe'], threat.get('EV_Spe', 0))
-        for _, member in team_df.iterrows():
-            member_speed = calculate_stats_with_evs(member['Spe'], member.get('EV_Spe', 0))
-            if member_speed > threat_speed:
-                threat_data['Speed Advantage'] += 1
-        
-        results.append(threat_data)
-    
-    return pd.DataFrame(results).sort_values('Max Damage %', ascending=False)
-
-def analyze_team_weaknesses(team_df: pd.DataFrame, type_chart: Dict) -> Dict[str, int]:
+def analyze_team_weaknesses(team_types: List[List[str]], type_chart: Dict) -> Dict[str, int]:
     """Analyze team-wide type weaknesses"""
     weaknesses = {}
     all_types = list(type_chart.keys())
     
     for attack_type in all_types:
         weak_count = 0
-        for _, pokemon in team_df.iterrows():
-            types = [pokemon['Type1']]
-            if pd.notna(pokemon.get('Type2')):
-                types.append(pokemon['Type2'])
-            
-            effectiveness = calculate_type_effectiveness(attack_type, types, type_chart)
+        for pokemon_types in team_types:
+            effectiveness = calculate_type_effectiveness(attack_type, pokemon_types, type_chart)
             if effectiveness > 1.0:
                 weak_count += 1
-        
         if weak_count > 0:
             weaknesses[attack_type] = weak_count
     
     return dict(sorted(weaknesses.items(), key=lambda x: x[1], reverse=True))
-
-def analyze_speed_tiers(team_df: pd.DataFrame) -> Dict[str, List]:
-    """Analyze team speed distribution"""
-    speed_data = []
-    
-    for _, pokemon in team_df.iterrows():
-        actual_speed = calculate_stats_with_evs(pokemon['Spe'], pokemon.get('EV_Spe', 0))
-        speed_data.append({
-            'Name': pokemon['Name'],
-            'Speed': actual_speed,
-            'Tier': get_speed_tier(actual_speed)
-        })
-    
-    return speed_data
 
 def get_speed_tier(speed: int) -> str:
     """Categorize speed into tiers"""
@@ -492,37 +172,25 @@ def get_speed_tier(speed: int) -> str:
     else:
         return 'Very Fast (121+)'
 
-def get_move_example(move_type: str) -> str:
-    """Get example move for a given type"""
-    move_examples = {
-        'Fire': 'Flamethrower/Heat Wave',
-        'Water': 'Surf/Hydro Pump',
-        'Electric': 'Thunderbolt/Thunder',
-        'Grass': 'Energy Ball/Leaf Storm',
-        'Ice': 'Ice Beam/Blizzard',
-        'Fighting': 'Close Combat/Focus Blast',
-        'Poison': 'Sludge Bomb/Poison Jab',
-        'Ground': 'Earthquake/Earth Power',
-        'Flying': 'Air Slash/Hurricane',
-        'Psychic': 'Psychic/Psyshock',
-        'Bug': 'Bug Buzz/U-turn',
-        'Rock': 'Rock Slide/Stone Edge',
-        'Ghost': 'Shadow Ball/Shadow Claw',
-        'Dragon': 'Dragon Pulse/Dragon Claw',
-        'Dark': 'Dark Pulse/Knock Off',
-        'Steel': 'Flash Cannon/Iron Head',
-        'Fairy': 'Moonblast/Dazzling Gleam'
-    }
-    return move_examples.get(move_type, f'{move_type} move')
+def analyze_speed_tiers(team_df: pd.DataFrame) -> List[Dict]:
+    """Analyze team speed distribution"""
+    speed_data = []
+    for _, row in team_df.iterrows():
+        speed_data.append({
+            'Pokemon': row['Pokemon'],
+            'Speed': row['Base Stats: Spe'],
+            'Tier': get_speed_tier(row['Base Stats: Spe'])
+        })
+    return speed_data
 
 # ========================
-# 4. STREAMLIT APP
+# 3. STREAMLIT APP
 # ========================
 
 def main():
     st.set_page_config(page_title="VGC Team Analyzer", layout="wide", initial_sidebar_state="expanded")
     
-    # Custom CSS for better styling
+    # Custom CSS
     st.markdown("""
     <style>
     .metric-card {
@@ -540,247 +208,102 @@ def main():
     </style>
     """, unsafe_allow_html=True)
     
-    st.title("🎮 VGC Team Analyzer with Data Preprocessing")
-    st.markdown("**Comprehensive Pokémon VGC team analysis with automatic data preprocessing and threat detection**")
+    st.title("🎮 VGC Team Analyzer")
+    st.markdown("**Comprehensive Pokémon VGC team analysis**")
     
     # Sidebar for data upload
     with st.sidebar:
-        st.header("📁 Data Upload & Processing")
+        st.header("📁 Data Upload")
+        team_file = st.file_uploader("Upload Team Data (CSV)", type=["csv"])
+        threats_file = st.file_uploader("Upload Threats Data (CSV)", type=["csv"])
         
-        # Team upload
-        team_file = st.file_uploader(
-            "Upload Your Team Data (CSV)", 
-            type=["csv"],
-            help="Upload either raw team data or preprocessed analyzer format"
-        )
+        if team_file is not None:
+            team_df = pd.read_csv(team_file)
+            processed_team = preprocess_team_data_for_analyzer(team_df)
+        else:
+            st.warning("Using sample team data")
+            sample_team = [{
+                'Pokemon': 'Iron Hands', 'Typing (Primary)': 'Fighting', 'Typing (Secondary)': 'Electric',
+                'Base Stats: HP': 154, 'Base Stats: Atk': 140, 'Base Stats: Def': 108,
+                'Base Stats: SpA': 50, 'Base Stats: SpD': 68, 'Base Stats: Spe': 50,
+                'EVs': '252 HP/252 Atk/4 SpD', 'Item': 'Assault Vest', 'Ability': 'Quark Drive',
+                'Move 1': 'Drain Punch', 'Move 2': 'Thunder Punch', 'Move 3': 'Fake Out', 'Move 4': 'Wild Charge'
+            }]
+            team_df = pd.DataFrame(sample_team)
+            processed_team = preprocess_team_data_for_analyzer(team_df)
         
-        # Threats upload
-        threats_file = st.file_uploader(
-            "Upload Pokémon Dataset for Threats (CSV)", 
-            type=["csv"],
-            help="Upload either raw Pokémon data or preprocessed analyzer format"
-        )
-        
-        st.markdown("---")
-        st.markdown("### 🔄 Data Processing Status")
-        
-        # Processing status will be shown here
-        processing_status = st.empty()
-        
-        st.markdown("---")
-        st.markdown("### 📋 Supported Data Formats")
-        
-        with st.expander("Raw Team Data Format"):
-            st.code("""Pokemon,Typing (Primary),Typing (Secondary),Base Stats: HP,Base Stats: Atk,Base Stats: Def,Base Stats: SpA,Base Stats: SpD,Base Stats: Spe,EVs,Item,Ability,Move 1,Move 2,Move 3,Move 4
-Iron Hands,Fighting,Electric,154,140,108,50,68,50,"252 HP/252 Atk/4 SpD",Assault Vest,Quark Drive,Drain Punch,Thunder Punch,Fake Out,Wild Charge""")
-        
-        with st.expander("Raw Threats Data Format"):
-            st.code("""Name,Typing (Primary),Typing (Secondary),Base Stats: HP,Base Stats: Atk,Base Stats: Def,Base Stats: SpA,Base Stats: SpD,Base Stats: Spe,Meta Usage (%),Role(s)
-Flutter Mane,Ghost,Fairy,55,55,55,135,135,135,32.5,Special Sweeper
-Garchomp,Dragon,Ground,108,130,95,80,85,102,18.7,Physical Sweeper""")
-        
-        with st.expander("Preprocessed Team Format"):
-            st.code("""Name,Type1,Type2,HP,Atk,Def,SpA,SpD,Spe,EV_HP,EV_Atk,EV_Def,EV_SpA,EV_SpD,EV_Spe,Item,Ability,Moves
-Iron Hands,Fighting,Electric,154,140,108,50,68,50,252,252,0,0,4,0,Assault Vest,Quark Drive,"Drain Punch,Thunder Punch,Fake Out,Wild Charge\"""")
-        
-        with st.expander("Preprocessed Threats Format"):
-            st.code("""Name,Type1,Type2,HP,Atk,Def,SpA,SpD,Spe,Usage,Tier
-Flutter Mane,Ghost,Fairy,55,55,55,135,135,135,32.5,S
-Garchomp,Dragon,Ground,108,130,95,80,85,102,18.7,A""")
+        if threats_file is not None:
+            threats_df = pd.read_csv(threats_file)
+            processed_threats = preprocess_all_pokemon_data_for_threats(threats_df)
+        else:
+            st.warning("Using sample threats data")
+            sample_threats = [{
+                'Name': 'Flutter Mane', 'Typing (Primary)': 'Ghost', 'Typing (Secondary)': 'Fairy',
+                'Base Stats: HP': 55, 'Base Stats: Atk': 55, 'Base Stats: Def': 55,
+                'Base Stats: SpA': 135, 'Base Stats: SpD': 135, 'Base Stats: Spe': 135,
+                'Meta Usage (%)': 32.5
+            }]
+            threats_df = pd.DataFrame(sample_threats)
+            processed_threats = preprocess_all_pokemon_data_for_threats(threats_df)
     
-    # Load data with preprocessing
-    type_chart = load_type_chart()
-    team_df = None
-    threats_df = None
-    
-    # Process team data
-    if team_file is not None:
-        try:
-            raw_team_df = pd.read_csv(team_file)
-            team_format = detect_data_format(raw_team_df)
-            
-            if team_format == 'raw_team':
-                processing_status.info("🔄 Processing raw team data...")
-                team_df = preprocess_team_data_for_analyzer(raw_team_df)
-                processing_status.success("✅ Team data processed successfully!")
-            elif team_format == 'analyzer_team':
-                processing_status.success("✅ Team data in correct format!")
-                team_df = raw_team_df
-            else:
-                processing_status.error("❌ Unrecognized team data format. Please check column names.")
-                st.error("Team data format not recognized. Please ensure your CSV has the required columns.")
-        except Exception as e:
-            processing_status.error(f"❌ Error processing team data: {str(e)}")
-            st.error(f"Error processing team data: {str(e)}")
-    else:
-        processing_status.info("🔄 Using sample team data. Upload your own team above for personalized analysis.")
-        team_df = pd.DataFrame(SAMPLE_TEAM)
-    
-    # Process threats data
-    if threats_file is not None:
-        try:
-            raw_threats_df = pd.read_csv(threats_file)
-            threats_format = detect_data_format(raw_threats_df)
-            
-            if threats_format == 'raw_threats':
-                processing_status.info("🔄 Processing raw threats data...")
-                threats_df = preprocess_all_pokemon_data_for_threats(raw_threats_df)
-                processing_status.success("✅ Threats data processed successfully!")
-            elif threats_format == 'analyzer_threats':
-                processing_status.success("✅ Threats data in correct format!")
-                threats_df = raw_threats_df
-            else:
-                processing_status.error("❌ Unrecognized threats data format. Please check column names.")
-                st.error("Threats data format not recognized. Please ensure your CSV has the required columns.")
-        except Exception as e:
-            processing_status.error(f"❌ Error processing threats data: {str(e)}")
-            st.error(f"Error processing threats data: {str(e)}")
-    else:
-        processing_status.info("🔄 Using sample threat data. Upload complete Pokémon dataset for comprehensive analysis.")
-        threats_df = pd.DataFrame(SAMPLE_THREATS)
-    
-    # Validate data
-    if team_df is None or len(team_df) == 0:
-        st.error("❌ Team data is empty or could not be processed. Please check your CSV file.")
-        st.stop()
-    
-    if threats_df is None or len(threats_df) == 0:
-        st.error("❌ Threats data is empty or could not be processed. Please check your CSV file.")
-        st.stop()
-    
-    # Validate processed data
-    team_valid, threats_valid = validate_processed_data(team_df, threats_df)
-    
-    if not team_valid:
-        st.error("❌ Processed team data is missing required columns.")
-        st.stop()
-    
-    if not threats_valid:
-        st.error("❌ Processed threats data is missing required columns.")
-        st.stop()
-    
-    # Display processing summary
-    with st.sidebar:
-        st.markdown("### 📊 Data Summary")
-        st.metric("Team Size", len(team_df))
-        st.metric("Threats Dataset", len(threats_df))
-        
-        # Show download options for processed data
-        if team_file is not None or threats_file is not None:
-            st.markdown("### 💾 Download Processed Data")
-            
-            if team_file is not None:
-                csv_team = team_df.to_csv(index=False)
-                st.download_button(
-                    label="Download Processed Team Data",
-                    data=csv_team,
-                    file_name="processed_team.csv",
-                    mime="text/csv"
-                )
-            
-            if threats_file is not None:
-                csv_threats = threats_df.to_csv(index=False)
-                st.download_button(
-                    label="Download Processed Threats Data",
-                    data=csv_threats,
-                    file_name="processed_threats.csv",
-                    mime="text/csv"
-                )
-    
-    # Main content tabs
+    # Main tabs
     tab1, tab2, tab3, tab4 = st.tabs(["🛡️ Team Overview", "⚔️ Threat Analysis", "🎯 Survival Calculator", "🔧 Optimization"])
     
-    with tab1:  # Team Overview tab
+    with tab1:  # TEAM OVERVIEW TAB
         st.header("Team Overview & Weaknesses")
         
-        # First verify the columns we actually have
-        st.write("Available columns:", team_df.columns.tolist())
-        
-        # 1. Display Raw Team Data Exactly As Uploaded
+        # 1. Display Team Data
         st.subheader("Your Team Composition")
-        try:
-            st.dataframe(team_df[[
-                'Pokemon', 'Typing (Primary)', 'Typing (Secondary)',
-                'Item', 'Ability', 'EVs', 'Nature',
-                'Move 1', 'Move 2', 'Move 3', 'Move 4'
-            ]], use_container_width=True, height=400)
-        except KeyError as e:
-            st.error(f"Column access error: {e}")
-            st.write("Falling back to showing all columns")
-            st.dataframe(team_df, use_container_width=True)
-    
-        # 2. Calculate and Display Team Stats
+        st.dataframe(team_df[[
+            'Pokemon', 'Typing (Primary)', 'Typing (Secondary)',
+            'Item', 'Ability', 'EVs', 'Nature',
+            'Move 1', 'Move 2', 'Move 3', 'Move 4'
+        ]], use_container_width=True)
+        
+        # 2. Team Stats
         st.subheader("Team Stats Summary")
         col1, col2, col3 = st.columns(3)
-        
         with col1:
-            try:
-                avg_hp = team_df['Base Stats: HP'].mean()
-                st.metric("Average HP", f"{avg_hp:.0f}")
-            except KeyError:
-                st.warning("Could not find HP stats")
-    
+            avg_hp = team_df['Base Stats: HP'].mean()
+            st.metric("Average HP", f"{avg_hp:.0f}")
         with col2:
-            try:
-                avg_speed = team_df['Base Stats: Spe'].mean()
-                st.metric("Average Speed", f"{avg_speed:.0f}")
-            except KeyError:
-                st.warning("Could not find Speed stats")
-    
+            avg_speed = team_df['Base Stats: Spe'].mean()
+            st.metric("Average Speed", f"{avg_speed:.0f}")
         with col3:
-            try:
-                physical_attackers = len([x for x in team_df['Role'] if 'Physical' in str(x)])
-                st.metric("Physical Attackers", physical_attackers)
-            except KeyError:
-                st.warning("Could not determine attacker types")
-    
+            physical_attackers = len([x for x in team_df['Role'] if 'Physical' in str(x)])
+            st.metric("Physical Attackers", physical_attackers)
+        
         # 3. Type Weakness Analysis
         st.subheader("Type Weakness Analysis")
+        team_types = []
+        for _, row in team_df.iterrows():
+            types = [row['Typing (Primary)']]
+            if pd.notna(row['Typing (Secondary)']) and row['Typing (Secondary)'] != 'NA':
+                types.append(row['Typing (Secondary)'])
+            team_types.append(types)
         
-        try:
-            team_types = []
-            for _, row in team_df.iterrows():
-                types = [row['Typing (Primary)']]
-                if pd.notna(row['Typing (Secondary)']) and row['Typing (Secondary)'] != 'NA':
-                    types.append(row['Typing (Secondary)'])
-                team_types.append(types)
-            
-            weaknesses = analyze_team_weaknesses(team_types, load_type_chart())
-            
-            if weaknesses:
-                weakness_df = pd.DataFrame(list(weaknesses.items()), 
-                                         columns=['Type', 'Weak Members'])
-                fig = px.bar(weakness_df, x='Type', y='Weak Members',
-                            title="Team Type Weaknesses",
-                            color='Weak Members',
-                            color_continuous_scale='Reds')
-                st.plotly_chart(fig, use_container_width=True)
-        except KeyError as e:
-            st.error(f"Could not perform type analysis: {e}")
-    
+        weaknesses = analyze_team_weaknesses(team_types, load_type_chart())
+        
+        if weaknesses:
+            weakness_df = pd.DataFrame(list(weaknesses.items()), columns=['Type', 'Weak Members'])
+            fig = px.bar(weakness_df, x='Type', y='Weak Members', 
+                        title="Team Type Weaknesses",
+                        color='Weak Members',
+                        color_continuous_scale='Reds')
+            st.plotly_chart(fig, use_container_width=True)
+        
         # 4. Speed Tier Analysis
         st.subheader("Speed Tier Distribution")
-        
-        try:
-            speed_data = []
-            for _, row in team_df.iterrows():
-                speed_data.append({
-                    'Pokemon': row['Pokemon'],
-                    'Speed': row['Base Stats: Spe'],
-                    'Tier': get_speed_tier(row['Base Stats: Spe'])
-                })
-            
-            speed_df = pd.DataFrame(speed_data)
-            fig = px.scatter(speed_df, x='Pokemon', y='Speed', color='Tier',
-                           title="Team Speed Distribution",
-                           hover_data=['Tier'])
-            fig.add_hline(y=70, line_dash="dash", line_color="red",
-                         annotation_text="Trick Room Threshold")
-            fig.add_hline(y=100, line_dash="dash", line_color="orange",
-                         annotation_text="Average Speed")
-            st.plotly_chart(fig, use_container_width=True)
-        except KeyError as e:
-            st.error(f"Could not perform speed analysis: {e}")
+        speed_data = analyze_speed_tiers(team_df)
+        speed_df = pd.DataFrame(speed_data)
+        fig = px.scatter(speed_df, x='Pokemon', y='Speed', color='Tier',
+                        title="Team Speed Distribution",
+                        hover_data=['Tier'])
+        fig.add_hline(y=70, line_dash="dash", line_color="red", 
+                     annotation_text="Trick Room Threshold")
+        fig.add_hline(y=100, line_dash="dash", line_color="orange", 
+                     annotation_text="Average Speed")
+        st.plotly_chart(fig, use_container_width=True)
     
     with tab2:
         st.header("Meta Threat Analysis")
