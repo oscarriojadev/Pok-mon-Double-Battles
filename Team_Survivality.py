@@ -305,29 +305,70 @@ def main():
     # Main tabs
     tab1, tab2, tab3, tab4 = st.tabs(["🛡️ Team Overview", "⚔️ Threat Analysis", "🎯 Survival Calculator", "🔧 Optimization"])
     
-    with tab1:  # TEAM OVERVIEW TAB
+    with tab1:  # Team Overview tab
         st.header("Team Overview & Weaknesses")
         
-        # 1. Display Team Data
+        # 1. Display Team Data (with flexible column handling)
         st.subheader("Your Team Composition")
-        st.dataframe(team_df[[
-            'Pokemon', 'Typing (Primary)', 'Typing (Secondary)',
-            'Item', 'Ability', 'EVs', 'Nature',
-            'Move 1', 'Move 2', 'Move 3', 'Move 4'
-        ]], use_container_width=True)
         
-        # 2. Team Stats
+        # Define columns we want to show and their possible names
+        display_columns = {
+            'Pokemon': ['Pokemon', 'Name', 'Pokémon'],
+            'Primary Type': ['Typing (Primary)', 'Type1', 'Primary Type'],
+            'Secondary Type': ['Typing (Secondary)', 'Type2', 'Secondary Type'],
+            'Item': ['Item', 'Held Item'],
+            'Ability': ['Ability', 'Abilities'],
+            'EVs': ['EVs', 'EV Spread'],
+            'Nature': ['Nature'],  # This is optional
+            'Move 1': ['Move 1', 'Move1'],
+            'Move 2': ['Move 2', 'Move2'],
+            'Move 3': ['Move 3', 'Move3'],
+            'Move 4': ['Move 4', 'Move4']
+        }
+        
+        # Find which columns are actually available
+        available_columns = {}
+        for display_name, possible_names in display_columns.items():
+            for name in possible_names:
+                if name in team_df.columns:
+                    available_columns[display_name] = name
+                    break
+        
+        # Show available columns
+        if available_columns:
+            st.dataframe(team_df[list(available_columns.values())].rename(
+                columns={v: k for k, v in available_columns.items()}
+            ), use_container_width=True)
+        else:
+            st.error("Could not find any team data columns to display")
+        
+        # 2. Team Stats Summary
         st.subheader("Team Stats Summary")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            avg_hp = team_df['Base Stats: HP'].mean()
-            st.metric("Average HP", f"{avg_hp:.0f}")
-        with col2:
-            avg_speed = team_df['Base Stats: Spe'].mean()
-            st.metric("Average Speed", f"{avg_speed:.0f}")
-        with col3:
-            physical_attackers = len([x for x in team_df['Role'] if 'Physical' in str(x)])
-            st.metric("Physical Attackers", physical_attackers)
+        cols = st.columns(3)
+        
+        with cols[0]:
+            hp_col = find_column(team_df, ['Base Stats: HP', 'HP'])
+            if hp_col:
+                avg_hp = team_df[hp_col].mean()
+                st.metric("Average HP", f"{avg_hp:.0f}")
+            else:
+                st.warning("HP data not available")
+        
+        with cols[1]:
+            spe_col = find_column(team_df, ['Base Stats: Spe', 'Spe', 'Speed'])
+            if spe_col:
+                avg_speed = team_df[spe_col].mean()
+                st.metric("Average Speed", f"{avg_speed:.0f}")
+            else:
+                st.warning("Speed data not available")
+        
+        with cols[2]:
+            role_col = find_column(team_df, ['Role', 'Roles'])
+            if role_col:
+                physical_count = sum('Physical' in str(x) for x in team_df[role_col])
+                st.metric("Physical Attackers", physical_count)
+            else:
+                st.warning("Role data not available")
         
         # 3. Type Weakness Analysis
         st.subheader("Type Weakness Analysis")
